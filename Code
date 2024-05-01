@@ -1,0 +1,96 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/spi_master.h"
+#include "driver/gpio.h"
+#include "esp_system.h"
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "esp_log.h"
+
+// Define pin numbers for SPI communication
+#define PIN_NUM_MISO 19  // Master In Slave Out
+#define PIN_NUM_MOSI 23  // Master Out Slave In
+#define PIN_NUM_CLK  18  // Clock
+#define PIN_NUM_CS   5   // Chip Select
+
+// Define GPIO pins for LED indicators
+#define LED_GREEN 25   // Green LED for access granted
+#define LED_YELLOW 26  // Yellow LED for processing
+#define LED_RED 27     // Red LED for access denied
+
+// Function to initialize SPI bus and device for communication with RC522
+void init_spi() {
+    // Configuration for the SPI bus
+    spi_bus_config_t buscfg = {
+        .miso_io_num = PIN_NUM_MISO,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = RC522_FIFO_SIZE  // Size of the buffer
+    };
+
+    spi_device_handle_t spi; // Handle for the SPI device
+    // Configuration for the SPI device, specifically for RC522
+    spi_device_interface_config_t devcfg = {
+        .clock_speed_hz = 1*1000*1000, // Clock speed of 1 MHz
+        .mode = 0,                     // SPI mode 0
+        .spics_io_num = PIN_NUM_CS,    // Chip Select pin
+        .queue_size = 7,               // Queue up to 7 transactions
+    };
+
+    // Initialize the SPI bus
+    spi_bus_initialize(HSPI_HOST, &buscfg, 1);
+    // Add the SPI device (RC522) to the bus
+    spi_bus_add_device(HSPI_HOST, &devcfg, &spi);
+}
+
+// Function to set up GPIO pins for LEDs as output
+void init_leds() {
+    gpio_set_direction(LED_GREEN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_YELLOW, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_RED, GPIO_MODE_OUTPUT);
+}
+
+// Main application function
+void app_main() {
+    // Initialize NVS (Non-Volatile Storage) for storing data
+    esp_err_t ret = nvs_flash_init();
+    // Check for errors related to storage initialization
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      nvs_flash_erase(); // Erase if there are no free pages or there's a new version
+      nvs_flash_init();  // Re-initialize
+    }
+
+    init_spi();  // Initialize SPI for communication with RC522
+    init_leds(); // Initialize LEDs for signaling
+
+    // Main loop
+    while (1) {
+        gpio_set_level(LED_YELLOW, 1);  // Turn on Yellow LED to indicate processing
+        vTaskDelay(1000 / portTICK_PERIOD_MS); // Simulate a delay for processing (1 second)
+
+        // Simulate reading a tag and authenticating
+        bool authorized = false; // Replace this with actual authentication check
+        if (authorized) {
+            gpio_set_level(LED_GREEN, 1);  // If authorized, turn on Green LED
+            gpio_set_level(LED_RED, 0);    // Ensure Red LED is off
+        } else {
+            gpio_set_level(LED_RED, 1);   // If not authorized, turn on Red LED
+            gpio_set_level(LED_GREEN, 0);  // Ensure Green LED is off
+        }
+        gpio_set_level(LED_YELLOW, 0);  // Turn off Yellow LED after processing
+        vTaskDelay(2000 / portTICK_PERIOD_MS);  // Wait for 2 seconds before next iteration
+
+        // Reset LEDs to off state for next card read
+        gpio_set_level(LED_GREEN, 0);
+        gpio_set_level(LED_RED, 0);
+    }
+}
+
+
+// TO DO 
+  // NFC tagging
+  // Communication network
