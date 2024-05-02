@@ -76,6 +76,9 @@ void NFC_Reading_Task(void *arg) {
     PCD_Init(spi); // Initialize the RC522 device
     while(1)
     {
+        yellow_led(); // Indicate processing
+        vTaskDelay(500 / portTICK_PERIOD_MS); // Short delay for visual effect
+
         // Check for New Card
         if(PICC_IsNewCardPresent(spi))                   
         {
