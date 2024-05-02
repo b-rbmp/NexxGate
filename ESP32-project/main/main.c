@@ -16,6 +16,26 @@
 // Define GPIO pins for LED indicators
 #define LED_RED GPIO_NUM_46   // Line for Red
 #define LED_GREEN GPIO_NUM_45  // Line for Green
+gpio_set_level(LED_GREEN, 0); // Turn off Green LED
+gpio_set_level(LED_RED, 0);   // Turn off Red LED
+
+// Function to display red LED
+void red_led() {
+    gpio_set_level(LED_GREEN, 0);
+    gpio_set_level(LED_RED, 1);
+}
+
+// Function to display green LED
+void green_led() {
+    gpio_set_level(LED_GREEN, 1);
+    gpio_set_level(LED_RED, 0);
+}
+
+// Function to display yellow LED
+void yellow_led() {
+    gpio_set_level(LED_GREEN, 1);
+    gpio_set_level(LED_RED, 1);
+}
 
 // Function to initialize SPI bus and device for communication with RC522
 spi_device_handle_t init_spi() {
@@ -59,6 +79,9 @@ void NFC_Reading_Task(void *arg) {
     spi_device_handle_t spi = *(spi_device_handle_t*) arg;
     while(1)
     {
+        yellow_led(); // Indicate processing
+        vTaskDelay(500 / portTICK_PERIOD_MS); // Short delay for visual effect
+
         // Check for New Card
         if(PICC_IsNewCardPresent(spi))                   
         {
