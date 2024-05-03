@@ -236,6 +236,8 @@ enum PCD_Register {
 	PICC_Type PICC_GetType(uint8_t sak);
 	void PICC_DumpToSerial(spi_device_handle_t spi,Uid *uid	///< Pointer to Uid struct returned from a successful PICC_Select().
 										);
+	void PICC_DumpToSerial_Custom_Key(spi_device_handle_t spi,Uid *uid, MIFARE_Key key	///< Pointer to Uid struct returned from a successful PICC_Select().
+										);
 	void GetStatusCodeName(uint8_t code	///< One of the StatusCode enums.
 											);
 	uint8_t PCD_Authenticate(spi_device_handle_t spi,uint8_t command,		///< PICC_CMD_MF_AUTH_KEY_A or PICC_CMD_MF_AUTH_KEY_B

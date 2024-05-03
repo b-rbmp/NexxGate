@@ -11,45 +11,26 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "MFRC522.c"
+#include "config.c"
 
-// Define GPIO pins for LED indicators
-#define LED_YELLOW GPIO_NUM_45   // Line for Yellow
-#define LED_BLUE GPIO_NUM_42  // Line for Blue
-#define LED_RED GPIO_NUM_46  // Line for Red
 
-// Function to initialize SPI bus and device for communication with RC522
-spi_device_handle_t init_spi() {
-    esp_err_t ret; // Variable to store return values
-    // Configuration for the SPI bus
-    spi_bus_config_t buscfg = {
-        .miso_io_num = PIN_NUM_MISO,
-        .mosi_io_num = PIN_NUM_MOSI,
-        .sclk_io_num = PIN_NUM_CLK,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 32,
-    };
-
-    spi_device_handle_t spi; // Handle for the SPI device
-    // Configuration for the SPI device, specifically for RC522
-    spi_device_interface_config_t devcfg = {
-        .clock_speed_hz=5000000, // Clock speed of 1 MHz
-        .mode = 0,                     // SPI mode 0
-        .spics_io_num = PIN_NUM_CS,    // Chip Select pin
-        .queue_size = 7,               // Queue up to 7 transactions
-    };
-
-    // Initialize the SPI bus
-    ret = spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
-    assert(ret==ESP_OK);
-    // Add the SPI device (RC522) to the bus
-    ret = spi_bus_add_device(SPI2_HOST, &devcfg, &spi);
-    assert(ret==ESP_OK);
-
-    return spi;
+// Function that authenticates the user
+bool authenticate_NFC(char* uid) {
+    if (uid != NULL) {
+        // Check if the provided uid is in the list of valid uids
+        for (int i = 0; i < num_valid_uids; i++) {
+            printf("Comparing provided UID: %s with valid UID %d: %s\n", uid, i+1, valid_uids[i]);
+            if (strcmp(uid, valid_uids[i]) == 0) {
+                printf("UID is valid. Authentication successful.\n");
+                return true;
+            }
+        }
+        printf("UID is not recognized. Authentication failed.\n");
+    } else {
+        printf("UID is invalid. Authentication failed.\n");
+    }
+    return false;
 }
-
 
 
 void off_leds() {
@@ -71,14 +52,19 @@ void init_leds() {
 }
 
 void NFC_Reading_Task(void *arg) {
+
+    // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+    // MIFARE_Key key_a;
+    // // MIFARE_Key key_b;
+    // key_a.keyByte[0] = 0xFF; key_a.keyByte[1] = 0xFF; key_a.keyByte[2] = 0xFF; key_a.keyByte[3] = 0xFF; key_a.keyByte[4] = 0xFF; key_a.keyByte[5] = 0xFF;
+    // // key_b.keyByte[0] = 0xFF; key_b.keyByte[1] = 0xFF; key_b.keyByte[2] = 0xFF; key_b.keyByte[3] = 0xFF; key_b.keyByte[4] = 0xFF; key_b.keyByte[5] = 0xFF;
+
     spi_device_handle_t spi; // Handle for the SPI device
     spi = init_spi();  // Initialize SPI for communication with RC522
     PCD_Init(spi); // Initialize the RC522 device
     while(1)
     {
-        yellow_led(); // Indicate processing
-        vTaskDelay(500 / portTICK_PERIOD_MS); // Short delay for visual effect
-
+        vTaskDelay(500 / portTICK_PERIOD_MS);
         // Check for New Card
         if(PICC_IsNewCardPresent(spi))                   
         {
@@ -90,12 +76,23 @@ void NFC_Reading_Task(void *arg) {
             gpio_set_level(LED_YELLOW, 1);
 
             // Read Card Serial
-            PICC_ReadCardSerial(spi);
-            // Get UID	      
-            PICC_DumpToSerial(spi,&uid);       
+            if (!PICC_ReadCardSerial(spi)) {
+                printf("*****************ERROR READING CARD*****************\r\n");
+                off_leds();
+                continue;
+            }
+            // Get UID
+            //PICC_DumpToSerial_Custom_Key(spi,&uid,key_a);
+
+            // Get UID as string knowing it can have up to 10 bytes
+            char uid_string[22];
+            for (uint8_t i = 0; i < uid.size; i++) {
+                sprintf(&uid_string[i*2], "%02X", uid.uidByte[i]);
+            }
+            printf("UID: %s\r\n", uid_string);
 
             // Authenticate
-            bool authenticated = true;
+            bool authenticated = authenticate_NFC(uid_string);
             if (authenticated) {
                 // Turn on Green LED
                 off_leds();
@@ -110,7 +107,10 @@ void NFC_Reading_Task(void *arg) {
                 vTaskDelay(2000 / portTICK_PERIOD_MS);
             }
             off_leds();
+            PICC_HaltA(spi);
+            PCD_StopCrypto1(spi);
         } else {
+            off_leds();
             vTaskDelay(100 / portTICK_PERIOD_MS);
             continue;
         }
@@ -128,10 +128,8 @@ void app_main() {
     //   nvs_flash_erase(); // Erase if there are no free pages or there's a new version
     //   nvs_flash_init();  // Re-initialize
     // }
-
     
     init_leds(); // Initialize LEDs for signaling
 
     xTaskCreate(NFC_Reading_Task, "NFC_Reading_Task", 2048, NULL, 1, NULL);
-    
 }

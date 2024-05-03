@@ -808,6 +808,41 @@ bool PCD_CalculateCRC(	spi_device_handle_t spi,uint8_t *data,uint8_t length,uint
 
 */
 
+void PICC_DumpToSerial_Custom_Key(spi_device_handle_t spi,Uid *uid, MIFARE_Key key	///< Pointer to Uid struct returned from a successful PICC_Select().
+									) {
+	// UID
+
+	PICC_DumpDetailsToSerial(uid);
+	PICC_Type piccType = PICC_GetType(uid->sak);
+
+	switch (piccType) {
+			case PICC_TYPE_MIFARE_MINI:
+			case PICC_TYPE_MIFARE_1K:
+			case PICC_TYPE_MIFARE_4K:
+				PICC_DumpMifareClassicToSerial(spi,uid, piccType, &key);
+				break;
+
+			case PICC_TYPE_MIFARE_UL:
+				PICC_DumpMifareUltralightToSerial(spi);
+				break;
+
+			case PICC_TYPE_ISO_14443_4:
+			case PICC_TYPE_MIFARE_DESFIRE:
+			case PICC_TYPE_ISO_18092:
+			case PICC_TYPE_MIFARE_PLUS:
+			case PICC_TYPE_TNP3XXX:
+				printf("Dumping memory contents not implemented for that PICC type.\n");
+				break;
+
+			case PICC_TYPE_UNKNOWN:
+			case PICC_TYPE_NOT_COMPLETE:
+			default:
+				break; // No memory dump here
+		}
+
+} // End PICC_DumpDetailsToSerial()
+
+
 void PICC_DumpToSerial(spi_device_handle_t spi,Uid *uid	///< Pointer to Uid struct returned from a successful PICC_Select().
 									) {
 	// UID
