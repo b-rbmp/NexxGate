@@ -3,10 +3,7 @@
 #define LED_BLUE GPIO_NUM_42  // Line for Blue
 #define LED_RED GPIO_NUM_46  // Line for Red
 
-// Define a list of valid UIDs
-char* valid_uids[] = {
-    "A5EF1877"
-    // Add more UIDs as needed
-};
+#define MAX_UIDS 100  // Maximum number of UIDs we can store
+#define UID_LENGTH 10 // Assuming UID length to be 10 characters
 
-int num_valid_uids = sizeof(valid_uids) / sizeof(valid_uids[0]);
+#define NODE_ID "node123456" // Node ID for the device (TODO: Do with certificates / safety?)
