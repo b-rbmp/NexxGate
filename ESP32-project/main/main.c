@@ -8,7 +8,6 @@
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
-#include "nvs_flash.h"
 #include "esp_log.h"
 #include "config.c"
 #include "security.c"
@@ -88,8 +87,6 @@ bool authenticate_NFC(char* uid) {
                     gpio_set_level(LED_YELLOW, 0);
                     if (result_edge_response) {
                         printf("UID is recognized. Authentication successful.\n");
-
-                        // Add the UID to the list of recognized UIDs locally (THEN HAVE TO DO THE SAME FOR WHEN YOU ARE NOT EXPECTING A RESPONSE ON THE EVENT HANDLER)
                         return true;
                     } else {
                         printf("UID is not recognized. Authentication failed.\n");
@@ -137,7 +134,7 @@ void NFC_Reading_Task(void *arg) {
     while(1)
     {
         //print_memory_info("NFC_Reading_Task"); // Print memory info at the start of each loop
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
         printf("CHECKING FOR CARD\r\n");
         // Check for New Card
         if(PICC_IsNewCardPresent(spi))                   
@@ -247,33 +244,26 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
                     if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0) {
                         if (result->type == cJSON_True) {
-                            printf("UID is recognized. Authentication successful.\n");
                             // Add the UID to the list of recognized UIDs locally
                             add_uid(uid->valuestring);
                             result_edge_response = true;
                         } else {
-                            printf("UID is not recognized. Authentication failed.\n");
                             result_edge_response = false;
                         }
                         waiting_edge_response = false;
                     } else {
                         printf("Received response for a different UID or node ID.\n");
                         if (result->type == cJSON_True) {
-                            printf("UID is recognized. Adding to the local access list.\n");
+                            printf("A new UID is being added to the local access list.\n");
                             // Add the UID to the list of recognized UIDs locally
                             add_uid(uid->valuestring);
-                        } else {
-                            printf("UID is not recognized. Not adding to the local access list.\n");
-                        }
+                        } 
                     }
                     
                 } else {
                     printf("Invalid JSON message received.\n");
                 }
                 cJSON_Delete(root);
-                cJSON_Delete(result);
-                cJSON_Delete(uid);
-                cJSON_Delete(node_id);
             }
         }
         break;
