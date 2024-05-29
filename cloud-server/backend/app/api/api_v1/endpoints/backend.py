@@ -66,6 +66,9 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
     return {"message": "Logs uploaded successfully"}
 
 
+
+
+
 # Endpoint where devices send a GET /device_heartbeat/{api_key} request to update their last_seen field
 @router.get("/device_heartbeat/{api_key}", tags=["backend"], status_code=200)
 async def device_heartbeat(api_key: str, db: Session = Depends(get_db)):

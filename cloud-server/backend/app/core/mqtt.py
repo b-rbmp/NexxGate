@@ -4,7 +4,7 @@ import json
 import paho.mqtt.client as paho
 from paho import mqtt
 from sqlalchemy.orm import Session
-from app import schemas
+from app import models, schemas
 from app.dependencies import get_db_standalone
 from config import settings
 
@@ -21,43 +21,53 @@ def on_subscribe(client, userdata, mid, granted_qos, properties=None):
 def on_message(client, userdata, msg):
 
     topic: str = msg.topic
-    if topic.startswith("nexxgate/access"):
+    if topic.startswith("/nexxgate/access"):
+        print("Received message: " + str(msg.payload))
         m_decode=str(msg.payload.decode("utf-8","ignore"))
-        m_in=json.loads(m_decode) #decode json data
-        if "uid" not in m_in:
-            print("No uid key")
-        elif "node_id" not in m_in:
-            print("No node_id key")
-        elif "result" not in m_in:
-            print("No result key")
-        elif "date" not in m_in:
-            print("No date key")
-        else:
-            try:
-                db: Session = get_db_standalone()
-                
-                # Validate incoming data
-                data = schemas.AuthenticateData(
-                    uid=m_in['uid'],
-                    node_id=m_in['node_id'],
-                    date=datetime.datetime.strptime(m_in['date'], "%Y-%m-%d %H:%M:%S"),
-                    result=m_in['result']
-                )
+        try:
+            # Received message: b'{"uid": "12345", "node_id": "A5EF1877", "date": "2021-09-01 12:00:00", "result": true}'
 
-                # Log every authentication attempt
-                access_log = schemas.AccessLogCreateIn(
-                    device_node_id=data.node_id,
-                    timestamp=data.date,
-                    uid=data.uid,
-                    granted=data.result
-                )
-                db.add(access_log)
-                db.commit()
-                
-            except Exception as e:
-                print("Error: " + e)
-            finally:
-                db.close()
+            # Decode the incoming message above instead of the one below
+            m_in=json.loads(m_decode) #decode json data
+            if "uid" not in m_in:
+                print("No uid key")
+            elif "node_id" not in m_in:
+                print("No node_id key")
+            elif "result" not in m_in:
+                print("No result key")
+            elif "date" not in m_in:
+                print("No date key")
+            else:
+                try:
+                    db: Session = get_db_standalone()
+                    
+                    # Validate incoming data
+                    data = schemas.AuthenticateData(
+                        uid=m_in['uid'],
+                        node_id=m_in['node_id'],
+                        date=datetime.datetime.strptime(m_in['date'], "%Y-%m-%d %H:%M:%S"),
+                        result=m_in['result']
+                    )
+
+                    # Log every authentication attempt
+                    access_log = schemas.AccessLogCreateIn(
+                        device_node_id=data.node_id,
+                        timestamp=data.date,
+                        uid=data.uid,
+                        granted=data.result
+                    )
+
+                    access_log = models.AccessLog(**access_log.model_dump())
+                    db.add(access_log)
+                    db.commit()
+                    
+                except Exception as e:
+                    print("Error: " + e)
+                finally:
+                    db.close()
+        except Exception as e:
+            print("Error: " + e)
+        
 
 # using MQTT version 5 here, for 3.1.1: MQTTv311, 3.1: MQTTv31
 # userdata is user defined data of any type, updated by user_data_set()
@@ -66,9 +76,10 @@ client = paho.Client(client_id="", userdata=None, protocol=paho.MQTTv5)
 client.on_connect = on_connect
 
 # enable TLS for secure connection
-#client.tls_set(tls_version=mqtt.client.ssl.PROTOCOL_TLS)
+if settings.MQTT_SSL:
+    client.tls_set(tls_version=mqtt.client.ssl.PROTOCOL_TLS)
 # set username and password
-#client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASS)
+client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASS)
 # connect to HiveMQ Cloud on port 8883 (default for MQTT)
 client.connect(settings.MQTT_HOST, settings.MQTT_PORT)
 
@@ -77,4 +88,5 @@ client.on_subscribe = on_subscribe
 client.on_message = on_message
 
 # subscribe to all topics of encyclopedia by using the wildcard "#"
-client.subscribe("nexxgate/#", qos=0)
+client.subscribe("#", qos=0)
+

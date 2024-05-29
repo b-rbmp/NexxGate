@@ -6,7 +6,7 @@
 
 const char *ssid = "WIFI-SPAZIO-IMPERO";
 const char *pass = "SpazioImpero";
-const char *mqtt_address = "mqtt://172.27.73.220:1883";
+const char *mqtt_address = "mqtt://172.27.73.111:1883";
 
 // const char *ssid = "BernardoPixel";
 // const char *pass = "12345678";
@@ -86,7 +86,7 @@ spi_device_handle_t init_spi() {
     spi_device_handle_t spi; // Handle for the SPI device
     // Configuration for the SPI device, specifically for RC522
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz=1000000, // Clock speed of 1 MHz
+        .clock_speed_hz=4000000, // Clock speed of 4 MHz as used originally in the MRFC522 library for arduino
         .mode = 0,                     // SPI mode 0
         .spics_io_num = PIN_NUM_CS,    // Chip Select pin
         .queue_size = 7,               // Queue up to 7 transactions

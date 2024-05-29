@@ -134,7 +134,7 @@ void NFC_Reading_Task(void *arg) {
     while(1)
     {
         //print_memory_info("NFC_Reading_Task"); // Print memory info at the start of each loop
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
         printf("CHECKING FOR CARD\r\n");
         // Check for New Card
         if(PICC_IsNewCardPresent(spi))                   

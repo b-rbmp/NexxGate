@@ -1,0 +1,10 @@
+{
+    "idf.adapterTargetName": "esp32s3",
+    "idf.openOcdConfigs": [
+        "interface/ftdi/esp32_devkitj_v1.cfg",
+        "target/esp32s3.cfg"
+    ],
+    "cmake.configureOnOpen": true,
+    "idf.flashType": "JTAG",
+    "cmake.sourceDirectory": "D:/Documents/GitHub/NexxGate/ESP32-project"
+}

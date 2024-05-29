@@ -11,20 +11,18 @@ class HashableBaseModel(BaseModel):
 
 
 class AuthenticateData(BaseModel):
-    uid: str
-    node_id: str
-    date: datetime
-    result: bool
+    uid: str | None = None
+    node_id: str | None = None
+    date: datetime | None = None
+    result: bool | None = None
 
 
 # AccessLog
-
-
 class AccessLogBase(HashableBaseModel):
-    device_node_id: int
-    timestamp: datetime
-    uid: str
-    granted: bool
+    device_node_id: str | None = None
+    timestamp: datetime | None = None
+    uid: str | None = None
+    granted: bool | None = None
 
 
 class AccessLogInDBBase(AccessLogBase):
@@ -152,34 +150,6 @@ class EdgeServerUpdateIn(EdgeServerBase):
 class EdgeServerUpdateOut(EdgeServerUpdateIn):
     pass
 
-
-# AccessLog
-class AccessLogBase(HashableBaseModel):
-    device_node_id: int
-    timestamp: datetime
-    uid: str
-    granted: bool
-
-
-class AccessLogInDBBase(AccessLogBase):
-    class Config:
-        from_attributes = True
-
-
-class AccessLogCreateIn(AccessLogBase):
-    pass
-
-
-class AccessLogCreateOut(AccessLogCreateIn):
-    pass
-
-
-class AccessLogUpdateIn(AccessLogBase):
-    pass
-
-
-class AccessLogUpdateOut(AccessLogUpdateIn):
-    pass
 
 
 # Responses to the frontend and backend
