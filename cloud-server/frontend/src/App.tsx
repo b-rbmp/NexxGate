@@ -21,7 +21,7 @@ function App() {
   return (
       <QueryClientProvider client={queryClient}>
           <ChakraProvider>
-            <Flex height="100vh" w="100vw" backgroundColor="#004aad">
+            <Flex minH="100vh" w="100vw" backgroundColor="#004aad">
               
                 <Navbar />
               <Box width="80%" bg="gray.100" p="5" borderLeftRadius="40">

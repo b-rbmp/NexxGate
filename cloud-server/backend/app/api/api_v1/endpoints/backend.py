@@ -45,23 +45,35 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
     
     reader = csv.reader(io.StringIO(content), delimiter=',')
     
-    logs = []
+    logs_to_add = []
     for row in reader:
-        timestamp = datetime.strptime(row[0], "%d/%m/%Y %H:%M:%S")
+        timestamp = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
         uid = row[1]
         node_id = row[2]
         result = row[3]
+
+        # Convert result to boolean
+        if result == "True":
+            result = True
+        elif result == "False":
+            result = False
+        else:
+            raise HTTPException(status_code=400, detail="Invalid access log result")
         
-        log = AccessLog(
-            device_node_id=node_id,
-            timestamp=timestamp,
-            uid=uid,
-            granted=result
-        )
-        logs.append(log)
+        # Check if the log already exists in the database
+        existing_log = db.query(AccessLog).filter_by(timestamp=timestamp, device_node_id=node_id).first()
+        if existing_log is None:
+            log = AccessLog(
+                device_node_id=node_id,
+                timestamp=timestamp,
+                uid=uid,
+                granted=result
+            )
+            logs_to_add.append(log)
     
-    db.add_all(logs)
-    db.commit()
+    if logs_to_add:
+        db.add_all(logs_to_add)
+        db.commit()
     
     return {"message": "Logs uploaded successfully"}
 

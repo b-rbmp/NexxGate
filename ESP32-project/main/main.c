@@ -15,93 +15,19 @@
 #include "esp_sntp.h"
 #include "util.c"
 #include <cJSON.h>
+#include <inttypes.h>
+#include "rc522.h"
+#include "http.c"
 
+static const char* RC522_TAG = "rc522";
 
 static bool waiting_edge_response = false;
 static bool result_edge_response = false;
+static bool authenticating = false;
 static char waiting_uid[11];
 spi_device_handle_t spi; // Handle for the SPI device
 
-
-void setup_auth_data(const char* uid, const char* node_id, bool result, AuthenticateMessage *auth_data) {
-    char current_time[20];
-    get_iso8601_time(current_time, sizeof(current_time));
-
-    strncpy(auth_data->uid, uid, 11);
-    auth_data->uid[10] = '\0'; // Ensure null termination
-
-    strncpy(auth_data->node_id, node_id, 11);
-    auth_data->node_id[10] = '\0'; // Ensure null termination
-
-    strncpy(auth_data->date, current_time, 20);
-    auth_data->date[19] = '\0'; // Ensure null termination
-
-    auth_data->result = result;
-}
-
-// Function that authenticates the user
-bool authenticate_NFC(char* uid) {
-    printf("Authenticating UID: %s\n", uid);
-    if (uid != NULL) {
-        if (is_valid_uid(uid)) {
-            printf("UID is recognized. Authentication successful.\n");
-            // Convert the UID char * to a char[11] array to store in the struct
-            char uid_array[11];
-            strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-            uid_array[10] = '\0'; // Ensure null-termination
-
-            AuthenticateMessage authData;
-            setup_auth_data(uid_array, NODE_ID, true, &authData);
-
-            // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-            char json[100];
-            sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
-            mqtt_publish("/authenticate", json);
-            return true;
-        } else {
-            printf("UID is not recognized. Checking over Edge Server.\n");
-            // Convert the UID char * to a char[11] array to store in the struct
-            char uid_array[11];
-            strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-            uid_array[10] = '\0'; // Ensure null-termination
-
-            AuthenticateMessage authData;
-
-            setup_auth_data(uid_array, NODE_ID, false, &authData);
-
-            // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-            char json[100];
-            sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
-
-            mqtt_publish("/authenticate", json);
-
-            // Wait 5 seconds for the response from the server
-            result_edge_response = false;
-            waiting_edge_response = true;
-            strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
-            for (int i = 0; i < 10; i++) {
-                vTaskDelay(500 / portTICK_PERIOD_MS);
-                // Switch the Yellow LED on and off to indicate waiting for response, starting with off
-                gpio_set_level(LED_YELLOW, i % 2);
-                if (!waiting_edge_response) {
-                    gpio_set_level(LED_YELLOW, 0);
-                    if (result_edge_response) {
-                        printf("UID is recognized. Authentication successful.\n");
-                        return true;
-                    } else {
-                        printf("UID is not recognized. Authentication failed.\n");
-                        return false;
-                    }
-                }
-            }
-        }
-        printf("UID is not recognized. Authentication failed.\n");
-    } else {
-        printf("UID is invalid. Authentication failed.\n");
-    }
-    return false;
-}
-
+static rc522_handle_t scanner;
 
 void off_leds() {
     gpio_set_level(LED_BLUE, 0);
@@ -123,71 +49,114 @@ void init_leds() {
     printf("LEDs initialized.\n");
 }
 
-void NFC_Reading_Task(void *arg) {
-    printf("NFC Reading Task started.\n");
-    // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
-    // MIFARE_Key key_a;
-    // // MIFARE_Key key_b;
-    // key_a.keyByte[0] = 0xFF; key_a.keyByte[1] = 0xFF; key_a.keyByte[2] = 0xFF; key_a.keyByte[3] = 0xFF; key_a.keyByte[4] = 0xFF; key_a.keyByte[5] = 0xFF;
-    // // key_b.keyByte[0] = 0xFF; key_b.keyByte[1] = 0xFF; key_b.keyByte[2] = 0xFF; key_b.keyByte[3] = 0xFF; key_b.keyByte[4] = 0xFF; key_b.keyByte[5] = 0xFF;
+void setup_auth_data(const char* uid, const char* node_id, bool result, AuthenticateMessage *auth_data) {
+    char current_time[20];
+    get_iso8601_time(current_time, sizeof(current_time));
 
-    while(1)
-    {
-        //print_memory_info("NFC_Reading_Task"); // Print memory info at the start of each loop
-        vTaskDelay(200 / portTICK_PERIOD_MS);
-        printf("CHECKING FOR CARD\r\n");
-        // Check for New Card
-        if(PICC_IsNewCardPresent(spi))                   
-        {
-            // Card is present
-            printf("*****************CARD PRESENT*****************\r\n");
+    strncpy(auth_data->uid, uid, 11);
+    auth_data->uid[10] = '\0'; // Ensure null termination
 
-            // Turn on Green LED and turn on Red LED, so yellow processing
-            off_leds();
-            gpio_set_level(LED_YELLOW, 1);
+    strncpy(auth_data->node_id, node_id, 11);
+    auth_data->node_id[10] = '\0'; // Ensure null termination
 
-            // Read Card Serial
-            if (!PICC_ReadCardSerial(spi)) {
-                printf("*****************ERROR READING CARD*****************\r\n");
-                off_leds();
-                continue;
-            }
-            // Get UID
-            //PICC_DumpToSerial_Custom_Key(spi,&uid,key_a);
+    strncpy(auth_data->date, current_time, 20);
+    auth_data->date[19] = '\0'; // Ensure null termination
 
-            // Get UID as string knowing it can have up to 10 bytes
-            char uid_string[22];
-            for (uint8_t i = 0; i < uid.size; i++) {
-                sprintf(&uid_string[i*2], "%02X", uid.uidByte[i]);
-            }
-            printf("UID: %s\r\n", uid_string);
-
-            // Authenticate
-            bool authenticated = authenticate_NFC(uid_string);
-            if (authenticated) {
-                // Turn on Green LED
-                off_leds();
-                gpio_set_level(LED_BLUE, 1);
-                printf("*****************CARD AUTHENTICATED*****************\r\n");
-                vTaskDelay(2000 / portTICK_PERIOD_MS);
-            } else {
-                // Turn on Red LED
-                off_leds();
-                gpio_set_level(LED_RED, 1);
-                printf("*****************CARD NOT AUTHENTICATED*****************\r\n");
-                vTaskDelay(2000 / portTICK_PERIOD_MS);
-            }
-            off_leds();
-            PICC_HaltA(spi);
-            PCD_StopCrypto1(spi);
-        } else {
-            off_leds();
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            continue;
-        }
-
-    }
+    auth_data->result = result;
 }
+
+
+// Function that authenticates the user
+void authenticate_NFC(char* uid) {
+    if (!authenticating) {
+        authenticating = true;
+        bool authenticated = false;
+        // Turn on yellow LED
+        off_leds();
+        gpio_set_level(LED_YELLOW, 1);
+        printf("Authenticating UID: %s\n", uid);
+        if (uid != NULL) {
+            if (is_valid_uid(uid)) {
+                printf("UID is recognized. Authentication successful.\n");
+                // Convert the UID char * to a char[11] array to store in the struct
+                char uid_array[11];
+                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                uid_array[10] = '\0'; // Ensure null-termination
+
+                AuthenticateMessage authData;
+                setup_auth_data(uid_array, NODE_ID, true, &authData);
+
+                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                char json[100];
+                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                mqtt_publish("/authenticate", json);
+                authenticated = true;
+            } else {
+                printf("UID is not recognized. Checking over Edge Server.\n");
+                // Convert the UID char * to a char[11] array to store in the struct
+                char uid_array[11];
+                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                uid_array[10] = '\0'; // Ensure null-termination
+
+                AuthenticateMessage authData;
+
+                setup_auth_data(uid_array, NODE_ID, false, &authData);
+
+                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                char json[100];
+                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+
+                mqtt_publish("/authenticate", json);
+
+                // Wait 5 seconds for the response from the server
+                result_edge_response = false;
+                waiting_edge_response = true;
+                strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
+                for (int i = 0; i < 10; i++) {
+                    vTaskDelay(500 / portTICK_PERIOD_MS);
+                    // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+                    gpio_set_level(LED_YELLOW, i % 2);
+                    if (!waiting_edge_response) {
+                        gpio_set_level(LED_YELLOW, 0);
+                        if (result_edge_response) {
+                            printf("UID is recognized. Authentication successful.\n");
+                            authenticated = true;
+                            break;
+                        } else {
+                            printf("UID is not recognized. Authentication failed.\n");
+                            authenticated = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            printf("UID is not recognized. Authentication failed.\n");
+        } else {
+            printf("UID is invalid. Authentication failed.\n");
+        }
+        if (authenticated) {
+            // Turn on Green LED
+            off_leds();
+            gpio_set_level(LED_BLUE, 1);
+            printf("*****************CARD AUTHENTICATED*****************\r\n");
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            off_leds();
+        } else {
+            // Turn on Red LED
+            off_leds();
+            gpio_set_level(LED_RED, 1);
+            printf("*****************CARD NOT AUTHENTICATED*****************\r\n");
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            off_leds();
+        }
+        authenticating = false;
+    }
+    
+}
+
+
+
+
 
 /*
  * @brief Event handler registered to receive MQTT events
@@ -283,6 +252,41 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+static void heartbeat_cloud_task(void *pvParameters)
+{
+    char local_response_buffer[MAX_HTTP_OUTPUT_BUFFER + 1] = {0};
+    // Endpoint is HEARTBEAT_LINK + API_KEY.
+    char endpoint[100];
+    sprintf(endpoint, "%s%s", HEARTBEAT_LINK, API_KEY);
+
+    esp_http_client_config_t config = {
+        .url = endpoint,
+        .event_handler = _http_event_handler,
+        .user_data = local_response_buffer,        
+        .disable_auto_redirect = true,
+    };
+
+    while(1) {
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+
+        // GET
+        esp_err_t err = esp_http_client_perform(client);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %"PRId64,
+                    esp_http_client_get_status_code(client),
+                    esp_http_client_get_content_length(client));
+        } else {
+            ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+        }
+        ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
+
+        esp_http_client_cleanup(client);
+        // Delay for 30 minutes (1800 seconds)
+        vTaskDelay(1800 * 1000 / portTICK_PERIOD_MS);
+    }
+    
+}
+
 void mqtt_app_start(void)
 {
     const esp_mqtt_client_config_t mqtt_cfg = {
@@ -293,6 +297,33 @@ void mqtt_app_start(void)
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
+}
+
+static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data)
+{
+    rc522_event_data_t* data = (rc522_event_data_t*) event_data;
+
+    switch(event_id) {
+        case RC522_EVENT_TAG_SCANNED: {
+                rc522_tag_t* tag = (rc522_tag_t*) data->ptr;
+                
+                // Convert the serial number to a uint32_t to reverse the byte order
+                uint32_t serial_number_32 = (uint32_t) tag->serial_number;
+
+                // Reverse the byte order to match the desired hex output
+                uint32_t reversed_serial_number = reverse_byte_order(serial_number_32);
+
+                // Allocate memory for the hex string
+                char hex_uid[9]; // 8 characters for the hex value + 1 for null terminator
+                sprintf(hex_uid, "%08X", (unsigned int)reversed_serial_number);
+
+                // Print the hexadecimal serial number
+                ESP_LOGI(RC522_TAG, "Tag scanned (sn: %s)", hex_uid);
+                
+                authenticate_NFC(hex_uid);
+            }
+            break;
+    }
 }
 
 
@@ -316,13 +347,25 @@ void app_main() {
 
     init_leds(); // Initialize LEDs for signaling
 
-    spi = init_spi();  // Initialize SPI for communication with RC522
-    PCD_Init(spi); // Initialize the RC522 device
-
     vTaskDelay(1000 / portTICK_PERIOD_MS); // 
 
-    xTaskCreate(NFC_Reading_Task, "NFC_Reading_Task", 4096, NULL, 10, NULL);
+    rc522_config_t config = {
+        .spi.host = SPI3_HOST,
+        .spi.miso_gpio = PIN_NUM_MISO,
+        .spi.mosi_gpio = PIN_NUM_MOSI,
+        .spi.sck_gpio = PIN_NUM_CLK,
+        .spi.sda_gpio = PIN_NUM_CS,
+    };
 
+    rc522_create(&config, &scanner);
+    rc522_register_events(scanner, RC522_EVENT_ANY, rc522_handler, NULL);
+
+    // Wait 5s for the RC522 to start up
+    rc522_start(scanner);
+
+
+    // Heartbeat task (Only when API is deployed to cloud)
+    //xTaskCreate(heartbeat_cloud_task, "heartbeat_cloud_task", 8192, NULL, 5, NULL);
 
     print_memory_info("app_main");
 }

@@ -36,7 +36,7 @@ class AccessLog(Base):
     device = relationship("Device", back_populates="logs")
     timestamp = Column(DateTime, nullable=False, index=True)
     uid = Column(String(20), nullable=False, index=True)
-    granted = Column(Boolean, nullable=False)
+    granted = Column(Boolean, nullable=False, index=True)
 
     # Make primary key from device_node_id and timestamp
     __table_args__ = (

@@ -226,7 +226,6 @@ def get_access_logs(
 
     return access_logs["elements"]
 
-
 # UserAuth
 from app.db.db_manager import crud_auth_user
 

@@ -33,6 +33,7 @@ class CRUDAccessLog:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         uid: str | None = None,
+        granted: bool | None = None,
     ) -> Dict[List[models.AccessLog], int]:
 
         response_get = {"elements": List[models.AccessLog], "count-total": int}
@@ -53,6 +54,9 @@ class CRUDAccessLog:
 
         if uid is not None:
             query_result = query_result.filter(models.AccessLog.uid == uid)
+
+        if granted is not None:
+            query_result = query_result.filter(models.AccessLog.granted == granted)
 
         response_get["total-count"] = str(query_result.count())
 

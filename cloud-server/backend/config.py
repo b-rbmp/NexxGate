@@ -33,6 +33,8 @@ class SettingsDev(SettingsBase):
         "http://localhost:4200",
         "http://localhost:3000",
         "http://localhost:8080",
+        "http://localhost:8000",
+        "*"
     ]
 
     DB_SERVICE: str = os.getenv("DB_DEV_SERVICE")

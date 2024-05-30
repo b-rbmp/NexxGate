@@ -156,3 +156,16 @@ class EdgeServerUpdateOut(EdgeServerUpdateIn):
 class AccessListResponseItem(HashableBaseModel):
     uid: str
     # biometric_data: str
+
+
+class AccessLogsMetricsResponseItem(HashableBaseModel):
+    hour: datetime
+    count: int
+
+
+class AccessLogsForFrontendResponseItem(HashableBaseModel):
+    timestamp: datetime
+    uid: str
+    granted: bool
+    device_node_id: str
+    edge_server_name: str
