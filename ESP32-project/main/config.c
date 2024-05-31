@@ -7,9 +7,6 @@ const char *ssid = "WIFI-SPAZIO-IMPERO";
 const char *pass = "SpazioImpero";
 const char *mqtt_address = "mqtt://172.27.73.111:1883";
 
-// const char *ssid = "BernardoPixel";
-// const char *pass = "12345678";
-
 int retry_num = 0;
 
 static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)

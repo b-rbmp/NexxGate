@@ -49,6 +49,14 @@ void init_leds() {
     printf("LEDs initialized.\n");
 }
 
+// Function to set up GPIO pin for Relay Control as output
+void init_relay() {
+    esp_rom_gpio_pad_select_gpio(RELAY_CONTROL);
+    gpio_set_direction(RELAY_CONTROL, GPIO_MODE_OUTPUT);
+    gpio_set_level(RELAY_CONTROL, 0); // Turn off the relay
+    printf("Relay initialized.\n");
+}
+
 void setup_auth_data(const char* uid, const char* node_id, bool result, AuthenticateMessage *auth_data) {
     char current_time[20];
     get_iso8601_time(current_time, sizeof(current_time));
@@ -138,8 +146,10 @@ void authenticate_NFC(char* uid) {
             // Turn on Green LED
             off_leds();
             gpio_set_level(LED_BLUE, 1);
+            gpio_set_level(RELAY_CONTROL, 1); // Turn on the relay
             printf("*****************CARD AUTHENTICATED*****************\r\n");
             vTaskDelay(2000 / portTICK_PERIOD_MS);
+            gpio_set_level(RELAY_CONTROL, 0); // Turn off the relay
             off_leds();
         } else {
             // Turn on Red LED
@@ -346,6 +356,7 @@ void app_main() {
     vTaskDelay(5000 / portTICK_PERIOD_MS); // delay is important cause we need to let it connect
 
     init_leds(); // Initialize LEDs for signaling
+    init_relay(); // Initialize relay control
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); // 
 

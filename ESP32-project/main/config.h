@@ -9,6 +9,9 @@
 #define PIN_NUM_CLK  GPIO_NUM_33
 #define PIN_NUM_CS   GPIO_NUM_47
 
+// Define GPIO for Relay Control (Solenoid)
+#define RELAY_CONTROL GPIO_NUM_7
+
 #define MAX_UIDS 100  // Maximum number of UIDs we can store
 #define UID_LENGTH 10 // Assuming UID length to be 10 characters
 
