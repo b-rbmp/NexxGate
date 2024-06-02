@@ -7,31 +7,33 @@ const char *ssid = "WIFI-SPAZIO-IMPERO";
 const char *pass = "SpazioImpero";
 const char *mqtt_address = "mqtt://172.27.73.111:1883";
 
+#define CONFIG_TAG "CONFIG"
+
 int retry_num = 0;
 
 static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_id == WIFI_EVENT_STA_START)
     {
-        printf("WIFI CONNECTING....\n");
+        ESP_LOGI(CONFIG_TAG, "WIFI CONNECTING....\n");
     }
     else if (event_id == WIFI_EVENT_STA_CONNECTED)
     {
-        printf("WiFi CONNECTED\n");
+        ESP_LOGI(CONFIG_TAG, "WiFi CONNECTED\n");
     }
     else if (event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        printf("WiFi lost connection\n");
+        ESP_LOGE(CONFIG_TAG, "WiFi lost connection\n");
         if (retry_num < 5)
         {
             esp_wifi_connect();
             retry_num++;
-            printf("Retrying to Connect...\n");
+            ESP_LOGI(CONFIG_TAG, "Retrying to Connect...\n");
         }
     }
     else if (event_id == IP_EVENT_STA_GOT_IP)
     {
-        printf("Wifi got IP...\n\n");
+        ESP_LOGI(CONFIG_TAG, "Wifi got IP...\n\n");
     }
 }
 
@@ -63,7 +65,7 @@ void wifi_connection()
     esp_wifi_set_mode(WIFI_MODE_STA);
     // 4- Wi-Fi Connect Phase
     esp_wifi_connect();
-    printf("wifi_init_softap finished. SSID:%s  password:%s", ssid, pass);
+    ESP_LOGI(CONFIG_TAG, "wifi_init_softap finished. SSID:%s  password:%s", ssid, pass);
 }
 
 
@@ -83,7 +85,7 @@ void obtain_time(void) {
     int retry = 0;
     const int retry_count = 10;
     while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI("NexxGate", "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        ESP_LOGI(CONFIG_TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
         vTaskDelay(pdMS_TO_TICKS(2000));
         time(&now);
         localtime_r(&now, &timeinfo);

@@ -23,3 +23,10 @@
 #define INITIAL_IDLE_PERIOD 40 // Initial idle period in seconds (1 hour)
 #define SLEEP_WAKE_INTERVAL 3000 // Sleep-wake interval in milliseconds (3 seconds)
 #define DUTY_CYCLE 50 // Duty cycle in percentage (50% of SLEEP_WAKE_INTERVAL will be active during the wake period)
+
+// LOGGING
+#define RC522_TAG "rc522"
+#define AUTH_TAG "AUTH"
+#define MQTT_TAG "MQTT"
+#define POWER_SAVING_TAG "POWER_SAVING"
+#define HTTP_TAG "HTTP_CLIENT"

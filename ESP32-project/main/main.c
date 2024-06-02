@@ -22,7 +22,6 @@
 #include "esp_sleep.h"
 #include "driver/uart.h"
 
-static const char *RC522_TAG = "rc522";
 
 static bool waiting_edge_response = false;
 static bool result_edge_response = false;
@@ -54,7 +53,7 @@ void init_leds()
     gpio_set_level(LED_RED, 0);    // Turn off Red LED
     gpio_set_level(LED_YELLOW, 0); // Turn off the Yellow LED
 
-    printf("LEDs initialized.\n");
+    ESP_LOGI(CONFIG_TAG, "LEDs initialized.\n");
 }
 
 // Function to set up GPIO pin for Relay Control as output
@@ -63,7 +62,7 @@ void init_relay()
     esp_rom_gpio_pad_select_gpio(RELAY_CONTROL);
     gpio_set_direction(RELAY_CONTROL, GPIO_MODE_OUTPUT);
     gpio_set_level(RELAY_CONTROL, 0); // Turn off the relay
-    printf("Relay initialized.\n");
+    ESP_LOGI(CONFIG_TAG, "Relay initialized.\n");
 }
 
 void setup_auth_data(const char *uid, const char *node_id, bool result, AuthenticateMessage *auth_data)
@@ -93,12 +92,12 @@ void authenticate_NFC(char *uid)
         // Turn on yellow LED
         off_leds();
         gpio_set_level(LED_YELLOW, 1);
-        printf("Authenticating UID: %s\n", uid);
+        ESP_LOGI(AUTH_TAG, "Authenticating UID: %s\n", uid);
         if (uid != NULL)
         {
             if (is_valid_uid(uid))
             {
-                printf("UID is recognized. Authentication successful.\n");
+                ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
                 // Convert the UID char * to a char[11] array to store in the struct
                 char uid_array[11];
                 strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
@@ -115,7 +114,7 @@ void authenticate_NFC(char *uid)
             }
             else
             {
-                printf("UID is not recognized. Checking over Edge Server.\n");
+                ESP_LOGW(AUTH_TAG, "UID is not recognized. Checking over Edge Server.\n");
                 // Convert the UID char * to a char[11] array to store in the struct
                 char uid_array[11];
                 strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
@@ -145,24 +144,23 @@ void authenticate_NFC(char *uid)
                         gpio_set_level(LED_YELLOW, 0);
                         if (result_edge_response)
                         {
-                            printf("UID is recognized. Authentication successful.\n");
+                            ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
                             authenticated = true;
                             break;
                         }
                         else
                         {
-                            printf("UID is not recognized. Authentication failed.\n");
+                            ESP_LOGW(AUTH_TAG, "UID is not recognized. Authentication failed.\n");
                             authenticated = false;
                             break;
                         }
                     }
                 }
             }
-            printf("UID is not recognized. Authentication failed.\n");
         }
         else
         {
-            printf("UID is invalid. Authentication failed.\n");
+            ESP_LOGI(AUTH_TAG, "UID is invalid. Authentication failed.\n");
         }
         if (authenticated)
         {
@@ -170,7 +168,7 @@ void authenticate_NFC(char *uid)
             off_leds();
             gpio_set_level(LED_BLUE, 1);
             gpio_set_level(RELAY_CONTROL, 1); // Turn on the relay
-            printf("*****************CARD AUTHENTICATED*****************\r\n");
+            ESP_LOGI(AUTH_TAG, "*****************CARD AUTHENTICATED*****************\r\n");
 
             for (int i=0; i<20; i++)
             {
@@ -185,7 +183,7 @@ void authenticate_NFC(char *uid)
             // Turn on Red LED
             off_leds();
             gpio_set_level(LED_RED, 1);
-            printf("*****************CARD NOT AUTHENTICATED*****************\r\n");
+            ESP_LOGI(AUTH_TAG, "*****************CARD NOT AUTHENTICATED*****************\r\n");
             for (int i=0; i<20; i++)
             {
                 vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -209,34 +207,34 @@ void authenticate_NFC(char *uid)
  */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
+    ESP_LOGD(MQTT_TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
     esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
     switch ((esp_mqtt_event_id_t)event_id)
     {
     case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
         mqtt_connected = true;
         // You can also move subscription logic here if subscriptions need to be reinstated upon reconnection
         esp_mqtt_client_subscribe(client, "/allow_authentication", 0);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
         mqtt_connected = false;
         break;
 
     case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
         break;
     case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
         break;
     case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
 
@@ -269,10 +267,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     }
                     else
                     {
-                        printf("Received response for a different UID or node ID.\n");
+                        ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
                         if (result->type == cJSON_True)
                         {
-                            printf("A new UID is being added to the local access list.\n");
+                            ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
                             // Add the UID to the list of recognized UIDs locally
                             add_uid(uid->valuestring);
                         }
@@ -280,24 +278,24 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                 }
                 else
                 {
-                    printf("Invalid JSON message received.\n");
+                    ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
                 }
                 cJSON_Delete(root);
             }
         }
         break;
     case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+        ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
         if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT)
         {
             log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
             log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
             log_error_if_nonzero("captured as transport's socket errno", event->error_handle->esp_transport_sock_errno);
-            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+            ESP_LOGI(MQTT_TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
         }
         break;
     default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+        ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
         break;
     }
 }
@@ -324,15 +322,15 @@ static void heartbeat_cloud_task(void *pvParameters)
         esp_err_t err = esp_http_client_perform(client);
         if (err == ESP_OK)
         {
-            ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %" PRId64,
+            ESP_LOGI(HTTP_TAG, "HTTP GET Status = %d, content_length = %" PRId64,
                      esp_http_client_get_status_code(client),
                      esp_http_client_get_content_length(client));
         }
         else
         {
-            ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+            ESP_LOGE(HTTP_TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
         }
-        ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
+        ESP_LOG_BUFFER_HEX(HTTP_TAG, local_response_buffer, strlen(local_response_buffer));
 
         esp_http_client_cleanup(client);
         // Delay for 30 minutes (1800 seconds)
@@ -367,18 +365,24 @@ static void wake_up_from_power_savings()
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
 
-    printf("WIFI RESTARTED\n");
+    // Set the led to off
+    gpio_set_level(LED_YELLOW, 0);
+
+    ESP_LOGI(POWER_SAVING_TAG, "WIFI RESTARTED\n");
 
     esp_mqtt_client_start(client);
 
-    // Flash the Yellow Led for 5 seconds to indicate the MQTT connection is being established
+    // Flash the Blue Led for 5 seconds to indicate the MQTT connection is being established
     for (int i = 0; i < 10; i++)
     {
         gpio_set_level(LED_BLUE, i % 2);
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
 
-    printf("MQTT RESTARTED\n");
+    // Set the led to off
+    gpio_set_level(LED_BLUE, 0);
+
+    ESP_LOGI(POWER_SAVING_TAG,"MQTT RESTARTED\n");
 
 }
 
@@ -436,7 +440,7 @@ static void light_sleep_task(void *pvParameters)
 
     while (1)
     {
-        printf("Entering light sleep\n");
+        ESP_LOGI(POWER_SAVING_TAG, "Entering light sleep\n");
         /* To make sure the complete line is printed before entering sleep mode,
          * need to wait until UART TX FIFO is empty:
          */
@@ -446,7 +450,7 @@ static void light_sleep_task(void *pvParameters)
 
         esp_light_sleep_start();
 
-        printf("Woke up from light sleep\n");
+        ESP_LOGI(POWER_SAVING_TAG, "Woke up from light sleep\n");
         
         i = 0;
         while (i < num_iterations)
