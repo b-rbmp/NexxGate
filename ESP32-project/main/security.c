@@ -149,10 +149,4 @@ void load_uids_from_nvs() {
     uid_count = (int)uid_count_temp;
 
     ESP_LOGI(NVS_TAG, "UIDs loaded from NVS successfully.");
-
-    // Print the loaded UIDs
-    ESP_LOGI(NVS_TAG, "Loaded UIDs:");
-    for (int i = 0; i < uid_count_temp; i++) {
-        ESP_LOGI(NVS_TAG, "UID %d: %s", i, valid_uids[i]);
-    }
 }

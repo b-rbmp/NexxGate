@@ -32,6 +32,7 @@
 #define POWER_SAVING_TAG "POWER_SAVING"
 #define HTTP_TAG "HTTP_CLIENT"
 #define NVS_TAG "NVS"
+#define DEVICE_MAJORITY_VOTE_TAG "DEVICE_MAJORITY_VOTE"
 
 // MQTT
 #define ALLOW_AUTHENTICATION_TOPIC "/allow_authentication"
@@ -39,7 +40,12 @@
 #define RESPONSE_ACCESS_LIST_TOPIC "/response_access_list"
 #define REQUEST_ACCESS_LIST_TOPIC "/request_access_list"
 #define AUTHENTICATE_TOPIC "/authenticate"
+#define DEVICE_MAJORITY_VOTE_TOPIC "/device_majority_vote"
+#define DEVICE_MAJORITE_RESPONSE_TOPIC "/device_majority_response"
 
 // NVS
 #define STORAGE_NAMESPACE "storage"
 #define UIDS_STORAGE_KEYS "uids"
+
+// MAJORITY VOTING PROCEDURE
+#define MAX_DEVICES_PARTICIPATING_MAJ_VOTE 5 // Maximum number of devices participating in the majority voting procedure
