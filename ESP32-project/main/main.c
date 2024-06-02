@@ -21,10 +21,13 @@
 
 static const char* RC522_TAG = "rc522";
 
-static bool waiting_edge_response = false;
-static bool result_edge_response = false;
+static bool waiting_edge_response_allow_auth = false;
+static bool result_edge_response_allow_auth = false;
+static bool waiting_edge_response_access_list = false;
+static bool to_be_authenticated = false;
+static char hex_uid_to_be_authenticated[9] = "00000000";
 static bool authenticating = false;
-static char waiting_uid[11];
+static char waiting_uid[ENCRYPTED_UID_LENGTH+1]; // Buffer to store the UID while waiting for the response
 spi_device_handle_t spi; // Handle for the SPI device
 
 static rc522_handle_t scanner;
@@ -57,12 +60,12 @@ void init_relay() {
     printf("Relay initialized.\n");
 }
 
-void setup_auth_data(const char* uid, const char* node_id, bool result, AuthenticateMessage *auth_data) {
+void setup_auth_data(const char* encrypted_uid, const char* node_id, bool result, AuthenticateMessage *auth_data) {
     char current_time[20];
     get_iso8601_time(current_time, sizeof(current_time));
 
-    strncpy(auth_data->uid, uid, 11);
-    auth_data->uid[10] = '\0'; // Ensure null termination
+    strncpy(auth_data->encrypted_uid, encrypted_uid, ENCRYPTED_UID_LENGTH*2+1);
+    auth_data->encrypted_uid[ENCRYPTED_UID_LENGTH*2+1] = '\0'; // Ensure null termination
 
     strncpy(auth_data->node_id, node_id, 11);
     auth_data->node_id[10] = '\0'; // Ensure null termination
@@ -72,7 +75,6 @@ void setup_auth_data(const char* uid, const char* node_id, bool result, Authenti
 
     auth_data->result = result;
 }
-
 
 // Function that authenticates the user
 void authenticate_NFC(char* uid) {
@@ -84,61 +86,71 @@ void authenticate_NFC(char* uid) {
         gpio_set_level(LED_YELLOW, 1);
         printf("Authenticating UID: %s\n", uid);
         if (uid != NULL) {
-            if (is_valid_uid(uid)) {
-                printf("UID is recognized. Authentication successful.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0'; // Ensure null-termination
+            char encrypted_uid[ENCRYPTED_UID_LENGTH*2];
 
-                AuthenticateMessage authData;
-                setup_auth_data(uid_array, NODE_ID, true, &authData);
-
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
-                mqtt_publish("/authenticate", json);
-                authenticated = true;
+            // Encrypt the incoming UID
+            if (encrypt_uid(uid, encrypted_uid) != 0) {
+                ESP_LOGI(TAG, "Failed to encrypt UID.");
+                authenticated = false;
             } else {
-                printf("UID is not recognized. Checking over Edge Server.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0'; // Ensure null-termination
+                printf("Encrypted UID: %s\n", encrypted_uid);
+                if (is_valid_uid(encrypted_uid)) {
+                    printf("UID is recognized. Authentication successful.\n");
+                    // Convert the encrypted UID char * to a char[ENCRYPTED_UID_LENGTH+1] array to store in the struct
+                    char encrypted_uid_str[ENCRYPTED_UID_LENGTH*2+1];
+                    strncpy(encrypted_uid_str, encrypted_uid, ENCRYPTED_UID_LENGTH*2+1); // Assuming 'uid' is null-terminated and has appropriate length
+                    encrypted_uid_str[ENCRYPTED_UID_LENGTH*2+1] = '\0'; // Ensure null-termination
+                
+                    AuthenticateMessage authData;
+                    setup_auth_data(encrypted_uid_str, NODE_ID, true, &authData);
 
-                AuthenticateMessage authData;
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[600];
+                    sprintf(json, "{\"encrypted_uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.encrypted_uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
+                    authenticated = true;
+                } else {
+                    printf("UID is not recognized. Checking over Edge Server.\n");
+                    // Convert the encrypted UID char * to a char[ENCRYPTED_UID_LENGTH+1] array to store in the struct
+                    char encrypted_uid_str[ENCRYPTED_UID_LENGTH*2+1];
+                    strncpy(encrypted_uid_str, encrypted_uid, ENCRYPTED_UID_LENGTH*2+1); // Assuming 'uid' is null-terminated and has appropriate length
+                    encrypted_uid_str[ENCRYPTED_UID_LENGTH*2+1] = '\0'; // Ensure null-termination
 
-                setup_auth_data(uid_array, NODE_ID, false, &authData);
+                    AuthenticateMessage authData;
 
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    setup_auth_data(encrypted_uid_str, NODE_ID, false, &authData);
 
-                mqtt_publish("/authenticate", json);
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[600];
+                    sprintf(json, "{\"encrypted_uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.encrypted_uid, authData.node_id, authData.date, authData.result ? "true" : "false");
 
-                // Wait 5 seconds for the response from the server
-                result_edge_response = false;
-                waiting_edge_response = true;
-                strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
-                for (int i = 0; i < 10; i++) {
-                    vTaskDelay(500 / portTICK_PERIOD_MS);
-                    // Switch the Yellow LED on and off to indicate waiting for response, starting with off
-                    gpio_set_level(LED_YELLOW, i % 2);
-                    if (!waiting_edge_response) {
-                        gpio_set_level(LED_YELLOW, 0);
-                        if (result_edge_response) {
-                            printf("UID is recognized. Authentication successful.\n");
-                            authenticated = true;
-                            break;
-                        } else {
-                            printf("UID is not recognized. Authentication failed.\n");
-                            authenticated = false;
-                            break;
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
+
+                    // Wait 5 seconds for the response from the server
+                    result_edge_response_allow_auth = false;
+                    waiting_edge_response_allow_auth = true;
+                    strncpy(waiting_uid, uid, ENCRYPTED_UID_LENGTH+1); // Copy the Encrypted UID to the waiting UID
+                    for (int i = 0; i < 10; i++) {
+                        vTaskDelay(500 / portTICK_PERIOD_MS);
+                        // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+                        gpio_set_level(LED_YELLOW, i % 2);
+                        if (!waiting_edge_response_allow_auth) {
+                            gpio_set_level(LED_YELLOW, 0);
+                            if (result_edge_response_allow_auth) {
+                                printf("UID is recognized. Authentication successful.\n");
+                                authenticated = true;
+                                break;
+                            } else {
+                                printf("UID is not recognized. Authentication failed.\n");
+                                authenticated = false;
+                                break;
+                            }
                         }
                     }
                 }
             }
-            printf("UID is not recognized. Authentication failed.\n");
+
+            
         } else {
             printf("UID is invalid. Authentication failed.\n");
         }
@@ -189,8 +201,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
         mqtt_connected = true;
         // You can also move subscription logic here if subscriptions need to be reinstated upon reconnection
-        esp_mqtt_client_subscribe(client, "/allow_authentication", 0);
-
+        esp_mqtt_client_subscribe(client, ALLOW_AUTHENTICATE_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, ACCESS_LIST_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, RESPONSE_ACCESS_LIST_TOPIC, 0);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -211,38 +224,99 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
 
-        if (waiting_edge_response) {
+        // Check if Topic is /allow_authentication
+        if (strncmp(event->topic, ALLOW_AUTHENTICATE_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response_allow_auth) {
+                // Check if the message is a JSON message
+                if (event->data[0] == '{') {
+                    // Parse the JSON message
+                    cJSON *root = cJSON_Parse(event->data);
+                    cJSON *result = cJSON_GetObjectItem(root, "result");
+                    cJSON *uid = cJSON_GetObjectItem(root, "uid");
+                    cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
+                    if (result != NULL) {
+                        // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
+                        if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0) {
+                            if (result->type == cJSON_True) {
+                                result_edge_response_allow_auth = true;
+                            } else {
+                                result_edge_response_allow_auth = false;
+                            }
+                            waiting_edge_response_allow_auth = false;
+                        } else {
+                            printf("Received response for a different UID or node ID.\n");
+                        }
+                        
+                    } else {
+                        printf("Invalid JSON message received.\n");
+                    }
+                    cJSON_Delete(root);
+                }
+            }
+        } else if (strncmp(event->topic, RESPONSE_ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response_access_list) {
+                waiting_edge_response_access_list = false;
+                // Check if the message is a JSON message
+                if (event->data[0] == '{') {
+                    // The message has the format: {"access_list": ["str1", "str2", ...], "public_key": "str"}
+                    // and update the access list by calling void update_access_list(const char* encrypted_uids[], int count);
+                    cJSON *root = cJSON_Parse(event->data);
+                    cJSON *access_list = cJSON_GetObjectItem(root, "access_list");
+                    cJSON *public_key = cJSON_GetObjectItem(root, "public_key");
+
+                    if (access_list != NULL && cJSON_IsArray(access_list) && public_key != NULL && cJSON_IsString(public_key)) {
+                        int count = cJSON_GetArraySize(access_list);
+                        const char* encrypted_uids[count];
+                        for (int i = 0; i < count; i++) {
+                            cJSON *item = cJSON_GetArrayItem(access_list, i);
+                            if (cJSON_IsString(item)) {
+                                encrypted_uids[i] = item->valuestring;
+                            } else {
+                                printf("Invalid access list item.\n");
+                                cJSON_Delete(root);
+                                return;
+                            }
+                        }
+                        // Update the access list
+                        update_access_list(encrypted_uids, count);
+                        // Update the public key
+                        update_public_key(public_key->valuestring);
+                        printf("Access list updated.\n");
+                    } else {
+                        printf("Invalid JSON message received.\n");
+                    }
+                }
+            }
+        } else if (strncmp(event->topic, ACCESS_LIST_TOPIC, event->topic_len) == 0) {
             // Check if the message is a JSON message
             if (event->data[0] == '{') {
-                // Parse the JSON message
+                // The message has the format: {"access_list": ["str1", "str2", ...], "public_key": "str"}
+                // and update the access list by calling void update_access_list(const char* encrypted_uids[], int count);
                 cJSON *root = cJSON_Parse(event->data);
-                cJSON *result = cJSON_GetObjectItem(root, "result");
-                cJSON *uid = cJSON_GetObjectItem(root, "uid");
-                cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
-                if (result != NULL) {
-                    // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
-                    if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0) {
-                        if (result->type == cJSON_True) {
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
-                            result_edge_response = true;
+                cJSON *access_list = cJSON_GetObjectItem(root, "access_list");
+                cJSON *public_key = cJSON_GetObjectItem(root, "public_key");
+
+                if (access_list != NULL && cJSON_IsArray(access_list) && public_key != NULL && cJSON_IsString(public_key)) {
+                    int count = cJSON_GetArraySize(access_list);
+                    const char* encrypted_uids[count];
+                    for (int i = 0; i < count; i++) {
+                        cJSON *item = cJSON_GetArrayItem(access_list, i);
+                        if (cJSON_IsString(item)) {
+                            encrypted_uids[i] = item->valuestring;
                         } else {
-                            result_edge_response = false;
+                            printf("Invalid access list item.\n");
+                            cJSON_Delete(root);
+                            return;
                         }
-                        waiting_edge_response = false;
-                    } else {
-                        printf("Received response for a different UID or node ID.\n");
-                        if (result->type == cJSON_True) {
-                            printf("A new UID is being added to the local access list.\n");
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
-                        } 
                     }
-                    
+                    // Update the access list
+                    update_access_list(encrypted_uids, count);
+                    // Update the public key
+                    update_public_key(public_key->valuestring);
+                    printf("Access list updated.\n");
                 } else {
                     printf("Invalid JSON message received.\n");
                 }
-                cJSON_Delete(root);
             }
         }
         break;
@@ -301,12 +375,24 @@ void mqtt_app_start(void)
 {
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = mqtt_address,
+        .buffer.size = 1024 * 10, // Increased Buffer Size // Use to calculate how many UIDs can be stored
     };
 
     client = esp_mqtt_client_init(&mqtt_cfg);
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
+}
+
+// Create an Authenticate Task that runs in the background and runs the authenticate_NFC function based on a flag and UID
+void authenticate_task(void *pvParameters) {
+    while (1) {
+        if (to_be_authenticated) {
+            authenticate_NFC(hex_uid_to_be_authenticated);
+            to_be_authenticated = false;
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
 }
 
 static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, void* event_data)
@@ -330,12 +416,35 @@ static void rc522_handler(void* arg, esp_event_base_t base, int32_t event_id, vo
                 // Print the hexadecimal serial number
                 ESP_LOGI(RC522_TAG, "Tag scanned (sn: %s)", hex_uid);
                 
-                authenticate_NFC(hex_uid);
+                // Authenticate the user outside of the task content
+                // Copy the hex UID to the global variable (not store the address) by copying the content strncpy
+                strncpy(hex_uid_to_be_authenticated, hex_uid, 9);
+
+                to_be_authenticated = true;
             }
             break;
     }
 }
 
+void request_access_list() {
+    waiting_edge_response_access_list = true;
+    
+    mqtt_publish(REQUEST_ACCESS_LIST_TOPIC, "update");
+
+    // Wait 5 seconds for the response from the server and flash all LEDs
+    for (int i = 0; i < 10; i++) {
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+        gpio_set_level(LED_YELLOW, i % 2);
+        if (!waiting_edge_response_access_list) {
+            gpio_set_level(LED_YELLOW, 0);
+            break;
+        }
+    }
+
+    // Turn off the Yellow LED
+    gpio_set_level(LED_YELLOW, 0);
+}
 
 
 // Main application function
@@ -358,6 +467,8 @@ void app_main() {
     init_leds(); // Initialize LEDs for signaling
     init_relay(); // Initialize relay control
 
+    request_access_list(); // Request the access list from the edge server
+
     vTaskDelay(1000 / portTICK_PERIOD_MS); // 
 
     rc522_config_t config = {
@@ -373,6 +484,9 @@ void app_main() {
 
     // Wait 5s for the RC522 to start up
     rc522_start(scanner);
+
+    // Create the authenticate task
+    xTaskCreate(authenticate_task, "authenticate_task", 8192, NULL, 5, NULL);
 
 
     // Heartbeat task (Only when API is deployed to cloud)

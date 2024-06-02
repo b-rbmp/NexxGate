@@ -19,9 +19,7 @@
         "esp_log.h": "c",
         "nvs_flash.h": "c",
         "mqtt_client.h": "c",
-        "esp_system.h": "c",
-        "pk.h": "c",
-        "security.h": "c"
+        "esp_system.h": "c"
     },
     "C_Cpp.errorSquiggles": "enabled"
 }
