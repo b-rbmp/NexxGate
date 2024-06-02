@@ -24,9 +24,17 @@
 
 
 static bool waiting_edge_response = false;
+static bool waiting_edge_response_access_list = false;
 static bool result_edge_response = false;
 static bool authenticating = false;
 static bool powersavings_active = false;
+
+// Device Majorty Vote for Access List
+static bool device_majority_vote = false; // Boolean to check if device voting is underway
+static char majority_vote_uid_list[MAX_DEVICES_PARTICIPATING_MAJ_VOTE][MAX_UIDS][UID_LENGTH]; // Array to store UIDs for majority voting from at maximum 5 other devices
+static int majority_vote_count = 0; // Counter for the number of devices participating in the majority voting procedure
+// ----------------------------
+
 static char waiting_uid[11];
 spi_device_handle_t spi; // Handle for the SPI device
 
@@ -82,6 +90,136 @@ void setup_auth_data(const char *uid, const char *node_id, bool result, Authenti
     auth_data->result = result;
 }
 
+// Helper function to compare two lists of UIDs
+int compare_uid_lists(char list1[MAX_UIDS][UID_LENGTH], char list2[MAX_UIDS][UID_LENGTH]) {
+    for (int i = 0; i < MAX_UIDS; i++) {
+        if (strcmp(list1[i], list2[i]) != 0) {
+            return 0; // Lists are not equal
+        }
+    }
+    return 1; // Lists are equal
+}
+
+// Function to count votes for a particular UID list
+int count_votes_for_list(char uid_list[MAX_UIDS][UID_LENGTH], int device_count) {
+    int votes = 0;
+    for (int i = 0; i < device_count; i++) {
+        if (compare_uid_lists(uid_list, majority_vote_uid_list[i])) {
+            votes++;
+        }
+    }
+    return votes;
+}
+
+// Function that concludes the majority voting procedure by checking the majority vote UID list and updating the access list, by comparing
+// the array of UIDs for the 5 devices participating + the own device UID listin the majority voting procedure and updating the access list 
+// with the list of UIDs that was voted for by the majority of the devices, by comparing if the lists are equal. If no majority is reached, 
+// the access list is not updated.
+void conclude_majority_voting() {
+    int total_devices = majority_vote_count + 1; // Including the device itself
+    int majority_threshold = total_devices / 2 + 1;
+    int max_votes = 0;
+    char majority_list[MAX_UIDS][UID_LENGTH];
+    int majority_found = 0;
+
+    for (int i = 0; i < majority_vote_count; i++) {
+        int votes = 0;
+        for (int j = 0; j < majority_vote_count; j++) {
+            if (compare_uid_lists(majority_vote_uid_list[i], majority_vote_uid_list[j])) {
+                votes++;
+            }
+        }
+        // Compare with the device's own list
+        if (compare_uid_lists(majority_vote_uid_list[i], valid_uids)) {
+            votes++;
+        }
+        if (votes > max_votes) {
+            max_votes = votes;
+            memcpy(majority_list, majority_vote_uid_list[i], sizeof(majority_list));
+        }
+    }
+
+    // Compare the device's own list with others
+    int device_votes = 0;
+    for (int i = 0; i < majority_vote_count; i++) {
+        if (compare_uid_lists(valid_uids, majority_vote_uid_list[i])) {
+            device_votes++;
+        }
+    }
+    if (device_votes + 1 > max_votes) { // +1 for the device's own vote
+        max_votes = device_votes + 1;
+        memcpy(majority_list, valid_uids, sizeof(majority_list));
+    }
+
+    if (max_votes >= majority_threshold) {
+        const char* uids[MAX_UIDS];
+        for (int i = 0; i < MAX_UIDS; i++) {
+            uids[i] = majority_list[i];
+        }
+        update_access_list(uids, MAX_UIDS);
+        save_uids_to_nvs();
+
+        majority_found = 1;
+        ESP_LOGI(DEVICE_MAJORITY_VOTE_TAG, "Majority reached. Access list updated.\n");
+    }
+
+    if (!majority_found) {
+        ESP_LOGI(DEVICE_MAJORITY_VOTE_TAG, "No majority reached. Access list not updated.\n");
+    }
+}
+
+
+// Task that starts a majority voting procedure for the access list with this node_id by publishing at /device_majority_vote with the nodeId as the payload
+static void majority_voting_task(void *pvParameters)
+{
+    if (!device_majority_vote) {
+
+        // Reset the majority vote UID list to empty strings for all participating devices
+        for (int i = 0; i < MAX_DEVICES_PARTICIPATING_MAJ_VOTE; i++)
+        {
+            for (int j = 0; j < MAX_UIDS; j++)
+            {
+                memset(majority_vote_uid_list[i][j], 0, UID_LENGTH);
+            }
+        }
+
+        // Reset the majority vote count
+        majority_vote_count = 0;
+
+        device_majority_vote = true;
+        // Publish the majority voting message to the /device_majority_vote topic
+        char json[100];
+        sprintf(json, "{\"node_id\":\"%s\"}", NODE_ID);
+        mqtt_publish(DEVICE_MAJORITY_VOTE_TOPIC, json);
+
+
+        ESP_LOGI(DEVICE_MAJORITY_VOTE_TAG, "Majority voting procedure started.\n");
+
+        // Wait 10s for the response from the other devices by using 
+        for (int i = 0; i < 20; i++)
+        {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+            gpio_set_level(LED_YELLOW, i % 2);
+            if (!device_majority_vote)
+            {
+                gpio_set_level(LED_YELLOW, 0);
+                break;
+            }
+        }
+
+        gpio_set_level(LED_YELLOW, 0);
+
+        conclude_majority_voting();
+    } else {
+        ESP_LOGW(DEVICE_MAJORITY_VOTE_TAG, "Majority voting procedure already in progress.\n");
+    }
+
+    vTaskDelete(NULL);
+}
+
+
+
 // Function that authenticates the user
 void authenticate_NFC(char *uid)
 {
@@ -98,64 +236,73 @@ void authenticate_NFC(char *uid)
             if (is_valid_uid(uid))
             {
                 ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0';        // Ensure null-termination
+                if (mqtt_connected) {
+                    // Convert the UID char * to a char[11] array to store in the struct
+                    char uid_array[11];
+                    strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                    uid_array[10] = '\0';        // Ensure null-termination
 
-                AuthenticateMessage authData;
-                setup_auth_data(uid_array, NODE_ID, true, &authData);
+                    AuthenticateMessage authData;
+                    setup_auth_data(uid_array, NODE_ID, true, &authData);
 
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
-                mqtt_publish("/authenticate", json);
-                authenticated = true;
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[100];
+                    sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
+                    authenticated = true;
+                } else {
+                    ESP_LOGW(AUTH_TAG, "MQTT not connected. Access not forwarded.\n");
+                }
             }
             else
             {
-                ESP_LOGW(AUTH_TAG, "UID is not recognized. Checking over Edge Server.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0';        // Ensure null-termination
+                if (mqtt_connected) {
+                    ESP_LOGW(AUTH_TAG, "UID is not recognized. Checking over Edge Server.\n");
+                    // Convert the UID char * to a char[11] array to store in the struct
+                    char uid_array[11];
+                    strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                    uid_array[10] = '\0';        // Ensure null-termination
 
-                AuthenticateMessage authData;
+                    AuthenticateMessage authData;
 
-                setup_auth_data(uid_array, NODE_ID, false, &authData);
+                    setup_auth_data(uid_array, NODE_ID, false, &authData);
 
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[100];
+                    sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
 
-                mqtt_publish("/authenticate", json);
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
 
-                // Wait 5 seconds for the response from the server
-                result_edge_response = false;
-                waiting_edge_response = true;
-                strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
-                for (int i = 0; i < 10; i++)
-                {
-                    vTaskDelay(500 / portTICK_PERIOD_MS);
-                    // Switch the Yellow LED on and off to indicate waiting for response, starting with off
-                    gpio_set_level(LED_YELLOW, i % 2);
-                    if (!waiting_edge_response)
+                    // Wait 5 seconds for the response from the server
+                    result_edge_response = false;
+                    waiting_edge_response = true;
+                    strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
+                    for (int i = 0; i < 10; i++)
                     {
-                        gpio_set_level(LED_YELLOW, 0);
-                        if (result_edge_response)
+                        vTaskDelay(500 / portTICK_PERIOD_MS);
+                        // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+                        gpio_set_level(LED_YELLOW, i % 2);
+                        if (!waiting_edge_response)
                         {
-                            ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
-                            authenticated = true;
-                            break;
-                        }
-                        else
-                        {
-                            ESP_LOGW(AUTH_TAG, "UID is not recognized. Authentication failed.\n");
-                            authenticated = false;
-                            break;
+                            gpio_set_level(LED_YELLOW, 0);
+                            if (result_edge_response)
+                            {
+                                ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
+                                authenticated = true;
+                                break;
+                            }
+                            else
+                            {
+                                ESP_LOGW(AUTH_TAG, "UID is not recognized. Authentication failed.\n");
+                                authenticated = false;
+                                break;
+                            }
                         }
                     }
+                } else {
+                    ESP_LOGW(AUTH_TAG, "MQTT not connected. Authentication Failed.\n");
                 }
+                
             }
         }
         else
@@ -216,7 +363,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
         mqtt_connected = true;
         // You can also move subscription logic here if subscriptions need to be reinstated upon reconnection
-        esp_mqtt_client_subscribe(client, "/allow_authentication", 0);
+        esp_mqtt_client_subscribe(client, ALLOW_AUTHENTICATION_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, ACCESS_LIST_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, RESPONSE_ACCESS_LIST_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, DEVICE_MAJORITY_VOTE_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, DEVICE_MAJORITE_RESPONSE_TOPIC, 0);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -238,49 +389,181 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
 
-        if (waiting_edge_response)
-        {
-            // Check if the message is a JSON message
-            if (event->data[0] == '{')
+        // Check if Topic is /allow_authentication
+        if (strncmp(event->topic, ALLOW_AUTHENTICATION_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response)
             {
-                // Parse the JSON message
-                cJSON *root = cJSON_Parse(event->data);
-                cJSON *result = cJSON_GetObjectItem(root, "result");
-                cJSON *uid = cJSON_GetObjectItem(root, "uid");
-                cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
-                if (result != NULL)
+                // Check if the message is a JSON message
+                if (event->data[0] == '{')
                 {
-                    // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
-                    if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
+                    // Parse the JSON message
+                    cJSON *root = cJSON_Parse(event->data);
+                    cJSON *result = cJSON_GetObjectItem(root, "result");
+                    cJSON *uid = cJSON_GetObjectItem(root, "uid");
+                    cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
+                    if (result != NULL)
                     {
-                        if (result->type == cJSON_True)
+                        // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
+                        if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
                         {
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
-                            result_edge_response = true;
+                            if (result->type == cJSON_True)
+                            {
+                                // Add the UID to the list of recognized UIDs locally (removed and now using bulk access list update)
+                                // add_uid(uid->valuestring);
+                                result_edge_response = true;
+                            }
+                            else
+                            {
+                                result_edge_response = false;
+                            }
+                            waiting_edge_response = false;
                         }
                         else
                         {
-                            result_edge_response = false;
+                            ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
+                            if (result->type == cJSON_True)
+                            {
+                                ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
+                                // Add the UID to the list of recognized UIDs locally
+                                add_uid(uid->valuestring);
+                            }
                         }
-                        waiting_edge_response = false;
                     }
                     else
                     {
-                        ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
-                        if (result->type == cJSON_True)
-                        {
-                            ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
+                        ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
+                    }
+                    cJSON_Delete(root);
+                }
+            }
+        } else if (strncmp(event->topic, RESPONSE_ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response_access_list) {
+                waiting_edge_response_access_list = false;
+                // Check if the message is a JSON message
+                if (event->data[0] == '[') {
+                    // The message has the format: ["str1", "str2", ...]
+                    // and update the access list by calling void update_access_list(const char* uids[], int count);
+                    cJSON *root = cJSON_Parse(event->data);
+                    if (root == NULL) {
+                        ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                        return;
+                    }
+                    
+                    int count = cJSON_GetArraySize(root);
+                    const char *uids[count];
+                    for (int i = 0; i < count; i++) {
+                        cJSON *item = cJSON_GetArrayItem(root, i);
+                        if (cJSON_IsString(item)) {
+                            uids[i] = item->valuestring;
+                        } else {
+                            uids[i] = "";
                         }
                     }
+                    
+                    update_access_list(uids, count);
+                    cJSON_Delete(root);
+
+                    // Save UIDs to NVS periodically
+                    save_uids_to_nvs();
+
+                    ESP_LOGI(MQTT_TAG, "Access list updated.\n");
                 }
-                else
-                {
+            }
+        } else if (strncmp(event->topic, ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            // Check if the message is a JSON message
+            if (event->data[0] == '[') {
+                // The message has the format: ["str1", "str2", ...]
+                // and update the access list by calling void update_access_list(const char* uids[], int count);
+                cJSON *root = cJSON_Parse(event->data);
+                if (root == NULL) {
+                    ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                    return;
+                }
+                
+                int count = cJSON_GetArraySize(root);
+                const char *uids[count];
+                for (int i = 0; i < count; i++) {
+                    cJSON *item = cJSON_GetArrayItem(root, i);
+                    if (cJSON_IsString(item)) {
+                        uids[i] = item->valuestring;
+                    } else {
+                        uids[i] = "";
+                    }
+                }
+                
+                update_access_list(uids, count);
+                cJSON_Delete(root);
+
+                // Save UIDs to NVS periodically
+                save_uids_to_nvs();
+                ESP_LOGI(MQTT_TAG, "Access list updated.\n");
+            }
+        } else if (strncmp(event->topic, DEVICE_MAJORITY_VOTE_TOPIC, event->topic_len) == 0) {
+            // Check if the message is a JSON message
+            if (event->data[0] == '{') {
+                // The message has the format: {"node_id":"str"}
+                // Check if the node_id is the same as the current node_id
+                cJSON *root = cJSON_Parse(event->data);
+                if (root == NULL) {
+                    ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                    return;
+                }
+                
+                cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
+                if (node_id != NULL && cJSON_IsString(node_id)) {
+                    if (strcmp(node_id->valuestring, NODE_ID) != 0) {
+                        // Publish your vote directed at the node_id that sent the original message by publishing with the format: {"node_id":"str","uids":["str1","str2",...]}
+                        cJSON *uids = cJSON_CreateArray();
+                        for (int i = 0; i < MAX_UIDS; i++) {
+                            cJSON *uid = cJSON_CreateString(valid_uids[i]);
+                            cJSON_AddItemToArray(uids, uid);
+                        }
+                        cJSON *vote = cJSON_CreateObject();
+                        cJSON_AddStringToObject(vote, "node_id", NODE_ID);
+                        cJSON_AddItemToObject(vote, "uids", uids);
+                        char *vote_str = cJSON_Print(vote);
+                        ESP_LOGI(MQTT_TAG, "Sending majority voting message to %s\n", node_id->valuestring);
+                        mqtt_publish(DEVICE_MAJORITE_RESPONSE_TOPIC, vote_str);
+                        cJSON_Delete(vote);
+                        free(vote_str);
+                    } else {
+                        ESP_LOGW(MQTT_TAG, "Received majority voting message from the same node. Ignoring.\n");
+                    }
+                } else {
                     ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
                 }
                 cJSON_Delete(root);
+            }
+        } else if (strncmp(event->topic, DEVICE_MAJORITE_RESPONSE_TOPIC, event->topic_len) == 0) {
+            if (device_majority_vote) {
+                // Check if the message is a JSON message
+                if (event->data[0] == '{') {
+                    // The message has the format: {"node_id":"str","uids":["str1","str2",...]}
+                    // and store the received UID list in the majority_vote_uid_list array
+                    cJSON *root = cJSON_Parse(event->data);
+                    if (root == NULL) {
+                        ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                        return;
+                    }
+                    
+                    cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
+                    cJSON *uids = cJSON_GetObjectItem(root, "uids");
+                    if (node_id != NULL && cJSON_IsString(node_id) && uids != NULL && cJSON_IsArray(uids)) {
+                        cJSON *uid;
+                        int i = 0;
+                        cJSON_ArrayForEach(uid, uids) {
+                            if (cJSON_IsString(uid)) {
+                                strcpy(majority_vote_uid_list[majority_vote_count][i], uid->valuestring);
+                                i++;
+                            }
+                        }
+                        majority_vote_count++;
+                        ESP_LOGI(MQTT_TAG, "Received majority voting message");
+                    } else {
+                        ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
+                    }
+                    cJSON_Delete(root);
+                }
             }
         }
         break;
@@ -474,6 +757,49 @@ void enter_light_sleep()
     xTaskCreate(light_sleep_task, "light_sleep_task", 2048, NULL, 5, NULL);
 }
 
+void obtain_access_list() {
+    bool use_nvs = false;
+    if (mqtt_connected) {
+        waiting_edge_response_access_list = true;
+    
+        mqtt_publish(REQUEST_ACCESS_LIST_TOPIC, "update");
+
+        // Wait 5 seconds for the response from the server and flash yellow LED
+        for (int i = 0; i < 10; i++) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+            gpio_set_level(LED_YELLOW, i % 2);
+            if (!waiting_edge_response_access_list) {
+                gpio_set_level(LED_YELLOW, 0);
+                break;
+            }
+        }
+
+        if (waiting_edge_response_access_list) {
+            ESP_LOGW(MQTT_TAG, "No response received for the access list. Using NVS stored access list.\n");
+            waiting_edge_response_access_list = false;
+            use_nvs = true;
+        }
+    } else {
+        ESP_LOGW(MQTT_TAG, "MQTT not connected. Using NVS stored access list.\n");
+        use_nvs = true;
+    }
+
+    if (use_nvs) {
+        // Load UIDs from NVS
+        load_uids_from_nvs();
+
+        // Start the majority voting task
+        xTaskCreate(majority_voting_task, "majority_voting_task", 4096, NULL, 5, NULL);
+    }
+    
+
+    // Turn off the Yellow LED
+    gpio_set_level(LED_YELLOW, 0);
+}
+
+
+
 // Main application function
 void app_main()
 {
@@ -484,6 +810,7 @@ void app_main()
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
     wifi_connection();                      // Connects to wifi
     vTaskDelay(20000 / portTICK_PERIOD_MS); // delay is important cause we need to let it connect to wifi
 
@@ -495,6 +822,8 @@ void app_main()
 
     init_leds();  // Initialize LEDs for signaling
     init_relay(); // Initialize relay control
+
+    obtain_access_list(); // Request the access list from the edge server
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); //
 

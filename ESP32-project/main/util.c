@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "util.h"
+#include "config.h"
 
 void print_memory_info(const char *taskName) {
     UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
