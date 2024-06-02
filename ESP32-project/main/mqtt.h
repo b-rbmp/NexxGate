@@ -15,4 +15,5 @@ typedef struct {
     bool result;        // Result as boolean
 } AuthenticatedMessage;
 
-void mqtt_app_start(void);
+void log_error_if_nonzero(const char *message, int error_code);
+void mqtt_publish(char *topic, char *data);

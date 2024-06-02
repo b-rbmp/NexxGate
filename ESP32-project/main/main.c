@@ -24,6 +24,7 @@
 
 
 static bool waiting_edge_response = false;
+static bool waiting_edge_response_access_list = false;
 static bool result_edge_response = false;
 static bool authenticating = false;
 static bool powersavings_active = false;
@@ -98,64 +99,73 @@ void authenticate_NFC(char *uid)
             if (is_valid_uid(uid))
             {
                 ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0';        // Ensure null-termination
+                if (mqtt_connected) {
+                    // Convert the UID char * to a char[11] array to store in the struct
+                    char uid_array[11];
+                    strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                    uid_array[10] = '\0';        // Ensure null-termination
 
-                AuthenticateMessage authData;
-                setup_auth_data(uid_array, NODE_ID, true, &authData);
+                    AuthenticateMessage authData;
+                    setup_auth_data(uid_array, NODE_ID, true, &authData);
 
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
-                mqtt_publish("/authenticate", json);
-                authenticated = true;
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[100];
+                    sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
+                    authenticated = true;
+                } else {
+                    ESP_LOGW(AUTH_TAG, "MQTT not connected. Access not forwarded.\n");
+                }
             }
             else
             {
-                ESP_LOGW(AUTH_TAG, "UID is not recognized. Checking over Edge Server.\n");
-                // Convert the UID char * to a char[11] array to store in the struct
-                char uid_array[11];
-                strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
-                uid_array[10] = '\0';        // Ensure null-termination
+                if (mqtt_connected) {
+                    ESP_LOGW(AUTH_TAG, "UID is not recognized. Checking over Edge Server.\n");
+                    // Convert the UID char * to a char[11] array to store in the struct
+                    char uid_array[11];
+                    strncpy(uid_array, uid, 11); // Assuming 'uid' is null-terminated and has appropriate length
+                    uid_array[10] = '\0';        // Ensure null-termination
 
-                AuthenticateMessage authData;
+                    AuthenticateMessage authData;
 
-                setup_auth_data(uid_array, NODE_ID, false, &authData);
+                    setup_auth_data(uid_array, NODE_ID, false, &authData);
 
-                // Publish the authentication data to the /authenticate topic, converting the struct to JSON
-                char json[100];
-                sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
+                    // Publish the authentication data to the /authenticate topic, converting the struct to JSON
+                    char json[100];
+                    sprintf(json, "{\"uid\":\"%s\",\"node_id\":\"%s\",\"date\":\"%s\",\"result\":%s}", authData.uid, authData.node_id, authData.date, authData.result ? "true" : "false");
 
-                mqtt_publish("/authenticate", json);
+                    mqtt_publish(AUTHENTICATE_TOPIC, json);
 
-                // Wait 5 seconds for the response from the server
-                result_edge_response = false;
-                waiting_edge_response = true;
-                strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
-                for (int i = 0; i < 10; i++)
-                {
-                    vTaskDelay(500 / portTICK_PERIOD_MS);
-                    // Switch the Yellow LED on and off to indicate waiting for response, starting with off
-                    gpio_set_level(LED_YELLOW, i % 2);
-                    if (!waiting_edge_response)
+                    // Wait 5 seconds for the response from the server
+                    result_edge_response = false;
+                    waiting_edge_response = true;
+                    strncpy(waiting_uid, uid, 11); // Copy the UID to the waiting UID
+                    for (int i = 0; i < 10; i++)
                     {
-                        gpio_set_level(LED_YELLOW, 0);
-                        if (result_edge_response)
+                        vTaskDelay(500 / portTICK_PERIOD_MS);
+                        // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+                        gpio_set_level(LED_YELLOW, i % 2);
+                        if (!waiting_edge_response)
                         {
-                            ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
-                            authenticated = true;
-                            break;
-                        }
-                        else
-                        {
-                            ESP_LOGW(AUTH_TAG, "UID is not recognized. Authentication failed.\n");
-                            authenticated = false;
-                            break;
+                            gpio_set_level(LED_YELLOW, 0);
+                            if (result_edge_response)
+                            {
+                                ESP_LOGI(AUTH_TAG, "UID is recognized. Authentication successful.\n");
+                                authenticated = true;
+                                break;
+                            }
+                            else
+                            {
+                                ESP_LOGW(AUTH_TAG, "UID is not recognized. Authentication failed.\n");
+                                authenticated = false;
+                                break;
+                            }
                         }
                     }
+                } else {
+                    ESP_LOGW(AUTH_TAG, "MQTT not connected. Authentication Failed.\n");
                 }
+                
             }
         }
         else
@@ -216,7 +226,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
         mqtt_connected = true;
         // You can also move subscription logic here if subscriptions need to be reinstated upon reconnection
-        esp_mqtt_client_subscribe(client, "/allow_authentication", 0);
+        esp_mqtt_client_subscribe(client, ALLOW_AUTHENTICATION_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, ACCESS_LIST_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, RESPONSE_ACCESS_LIST_TOPIC, 0);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -238,49 +250,114 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
 
-        if (waiting_edge_response)
-        {
-            // Check if the message is a JSON message
-            if (event->data[0] == '{')
+        // Check if Topic is /allow_authentication
+        if (strncmp(event->topic, ALLOW_AUTHENTICATION_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response)
             {
-                // Parse the JSON message
-                cJSON *root = cJSON_Parse(event->data);
-                cJSON *result = cJSON_GetObjectItem(root, "result");
-                cJSON *uid = cJSON_GetObjectItem(root, "uid");
-                cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
-                if (result != NULL)
+                // Check if the message is a JSON message
+                if (event->data[0] == '{')
                 {
-                    // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
-                    if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
+                    // Parse the JSON message
+                    cJSON *root = cJSON_Parse(event->data);
+                    cJSON *result = cJSON_GetObjectItem(root, "result");
+                    cJSON *uid = cJSON_GetObjectItem(root, "uid");
+                    cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
+                    if (result != NULL)
                     {
-                        if (result->type == cJSON_True)
+                        // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
+                        if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
                         {
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
-                            result_edge_response = true;
+                            if (result->type == cJSON_True)
+                            {
+                                // Add the UID to the list of recognized UIDs locally (removed and now using bulk access list update)
+                                // add_uid(uid->valuestring);
+                                result_edge_response = true;
+                            }
+                            else
+                            {
+                                result_edge_response = false;
+                            }
+                            waiting_edge_response = false;
                         }
                         else
                         {
-                            result_edge_response = false;
+                            ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
+                            if (result->type == cJSON_True)
+                            {
+                                ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
+                                // Add the UID to the list of recognized UIDs locally
+                                add_uid(uid->valuestring);
+                            }
                         }
-                        waiting_edge_response = false;
                     }
                     else
                     {
-                        ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
-                        if (result->type == cJSON_True)
-                        {
-                            ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
-                            // Add the UID to the list of recognized UIDs locally
-                            add_uid(uid->valuestring);
+                        ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
+                    }
+                    cJSON_Delete(root);
+                }
+            }
+        } else if (strncmp(event->topic, RESPONSE_ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            if (waiting_edge_response_access_list) {
+                waiting_edge_response_access_list = false;
+                // Check if the message is a JSON message
+                if (event->data[0] == '[') {
+                    // The message has the format: ["str1", "str2", ...]
+                    // and update the access list by calling void update_access_list(const char* uids[], int count);
+                    cJSON *root = cJSON_Parse(event->data);
+                    if (root == NULL) {
+                        printf("Error parsing JSON\n");
+                        return;
+                    }
+                    
+                    int count = cJSON_GetArraySize(root);
+                    const char *uids[count];
+                    for (int i = 0; i < count; i++) {
+                        cJSON *item = cJSON_GetArrayItem(root, i);
+                        if (cJSON_IsString(item)) {
+                            uids[i] = item->valuestring;
+                        } else {
+                            uids[i] = "";
                         }
                     }
+                    
+                    update_access_list(uids, count);
+                    cJSON_Delete(root);
+
+                    // Save UIDs to NVS periodically
+                    save_uids_to_nvs();
+
+                    ESP_LOGI(MQTT_TAG, "Access list updated.\n");
                 }
-                else
-                {
-                    ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
+            }
+        } else if (strncmp(event->topic, ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            // Check if the message is a JSON message
+            if (event->data[0] == '[') {
+                // The message has the format: ["str1", "str2", ...]
+                // and update the access list by calling void update_access_list(const char* uids[], int count);
+                cJSON *root = cJSON_Parse(event->data);
+                if (root == NULL) {
+                    printf("Error parsing JSON\n");
+                    return;
                 }
+                
+                int count = cJSON_GetArraySize(root);
+                const char *uids[count];
+                for (int i = 0; i < count; i++) {
+                    cJSON *item = cJSON_GetArrayItem(root, i);
+                    if (cJSON_IsString(item)) {
+                        uids[i] = item->valuestring;
+                    } else {
+                        uids[i] = "";
+                    }
+                }
+                
+                update_access_list(uids, count);
                 cJSON_Delete(root);
+
+                // Save UIDs to NVS periodically
+                save_uids_to_nvs();
+                ESP_LOGI(MQTT_TAG, "Access list updated.\n");
             }
         }
         break;
@@ -474,6 +551,46 @@ void enter_light_sleep()
     xTaskCreate(light_sleep_task, "light_sleep_task", 2048, NULL, 5, NULL);
 }
 
+void obtain_access_list() {
+    bool use_nvs = false;
+    if (mqtt_connected) {
+        waiting_edge_response_access_list = true;
+    
+        mqtt_publish(REQUEST_ACCESS_LIST_TOPIC, "update");
+
+        // Wait 5 seconds for the response from the server and flash yellow LED
+        for (int i = 0; i < 10; i++) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            // Switch the Yellow LED on and off to indicate waiting for response, starting with off
+            gpio_set_level(LED_YELLOW, i % 2);
+            if (!waiting_edge_response_access_list) {
+                gpio_set_level(LED_YELLOW, 0);
+                break;
+            }
+        }
+
+        if (waiting_edge_response_access_list) {
+            ESP_LOGW(MQTT_TAG, "No response received for the access list. Using NVS stored access list.\n");
+            waiting_edge_response_access_list = false;
+            use_nvs = true;
+        }
+    } else {
+        ESP_LOGW(MQTT_TAG, "MQTT not connected. Using NVS stored access list.\n");
+        use_nvs = true;
+    }
+
+    if (use_nvs) {
+        // Load UIDs from NVS
+        load_uids_from_nvs();
+    }
+    
+
+    // Turn off the Yellow LED
+    gpio_set_level(LED_YELLOW, 0);
+}
+
+
+
 // Main application function
 void app_main()
 {
@@ -484,6 +601,7 @@ void app_main()
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
     wifi_connection();                      // Connects to wifi
     vTaskDelay(20000 / portTICK_PERIOD_MS); // delay is important cause we need to let it connect to wifi
 
@@ -495,6 +613,8 @@ void app_main()
 
     init_leds();  // Initialize LEDs for signaling
     init_relay(); // Initialize relay control
+
+    obtain_access_list(); // Request the access list from the edge server
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); //
 

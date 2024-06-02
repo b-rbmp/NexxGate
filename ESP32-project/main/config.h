@@ -31,3 +31,15 @@
 #define MQTT_TAG "MQTT"
 #define POWER_SAVING_TAG "POWER_SAVING"
 #define HTTP_TAG "HTTP_CLIENT"
+#define NVS_TAG "NVS"
+
+// MQTT
+#define ALLOW_AUTHENTICATION_TOPIC "/allow_authentication"
+#define ACCESS_LIST_TOPIC "/access_list"
+#define RESPONSE_ACCESS_LIST_TOPIC "/response_access_list"
+#define REQUEST_ACCESS_LIST_TOPIC "/request_access_list"
+#define AUTHENTICATE_TOPIC "/authenticate"
+
+// NVS
+#define STORAGE_NAMESPACE "storage"
+#define UIDS_STORAGE_KEYS "uids"
