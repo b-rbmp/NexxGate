@@ -24,6 +24,23 @@ void add_uid(const char* uid) {
     uid_count++;
 }
 
+// Function to remove an UID from the circular buffer if it is present
+void remove_uid(const char* uid) {
+    int index = head;
+    for (int i = 0; i < uid_count; i++) {
+        if (strncmp(valid_uids[index], uid, UID_LENGTH) == 0) {
+            // UID found, remove it
+            for (int j = i; j < uid_count - 1; j++) {
+                strncpy(valid_uids[(index + j) % MAX_UIDS], valid_uids[(index + j + 1) % MAX_UIDS], UID_LENGTH);
+            }
+            tail = (tail - 1 + MAX_UIDS) % MAX_UIDS;
+            uid_count--;
+            return;
+        }
+        index = (index + 1) % MAX_UIDS;
+    }
+}
+
 // Update the access list with a new list of encrypted UIDs by replacing the old list
 void update_access_list(const char* uids[], int count) {
     head = 0;

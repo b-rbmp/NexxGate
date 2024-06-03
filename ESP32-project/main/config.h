@@ -42,6 +42,7 @@
 #define AUTHENTICATE_TOPIC "/authenticate"
 #define DEVICE_MAJORITY_VOTE_TOPIC "/device_majority_vote"
 #define DEVICE_MAJORITE_RESPONSE_TOPIC "/device_majority_response"
+#define REMOVE_UID_TOPIC "/remove_uid"
 
 // NVS
 #define STORAGE_NAMESPACE "storage"

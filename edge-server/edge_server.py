@@ -20,6 +20,7 @@ PERIOD_UPDATE_LOGS = 3600 * 24 * 7  # 1 week
 PERIOD_HEARTBEAT = 1800  # 30 minutes
 VOTE_TIMEOUT = 10  # 10 seconds
 LIMIT_ACCESS_LIST_DEVICES = 100
+LOCKOUT_PERIOD = timedelta(seconds=10) # 10 seconds lockout period
 
 # Topics
 AUTHENTICATE_TOPIC = "/authenticate"
@@ -27,6 +28,7 @@ ALLOW_AUTHENTICATE_TOPIC = "/allow_authentication"
 MAJORITY_VOTE_TOPIC = "/majority_vote"
 VOTE_RESPONSE_TOPIC = "/vote_response"
 ACCESS_LIST_TOPIC = "/access_list"
+REMOVE_UID_TOPIC = "/remove_uid"
 REQUEST_ACCESS_LIST_TOPIC = "/request_access_list"
 RESPONSE_ACCESS_LIST_TOPIC = "/response_access_list"
 
@@ -36,6 +38,12 @@ client_cloud = None
 access_list = []
 votes_received = []
 
+class LockoutData(BaseModel):
+    access_time: datetime
+    node_id: str
+
+# Dictionary to store the last access time and node_id of each UID for the lockout period mechanism
+uid_access_times_and_node_id: dict[str, LockoutData] = {}
 
 class AuthenticateData(BaseModel):
     uid: str
@@ -165,6 +173,12 @@ def write_access_to_file(data: AuthenticateData):
         file.write(f"{date_str},{data.uid},{data.node_id},{data.result}\n")
 
 
+def lockout_uid(uid):
+    global access_list, client
+    if uid in access_list:
+        access_list.remove(uid)
+        client.publish(REMOVE_UID_TOPIC, uid)
+
 def process_authentication(data: AuthenticateData):
     global access_list
     global client
@@ -181,13 +195,33 @@ def process_authentication(data: AuthenticateData):
         response_topic = ALLOW_AUTHENTICATE_TOPIC
         authenticated_info = AuthenticatedData(uid=uid, result=True, node_id=node_id)
         new_result = True
-        client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+        # Lockout mechanism
+        if new_result:
+            if uid in uid_access_times_and_node_id:
+                last_access_time_and_node_id = uid_access_times_and_node_id[uid]
+                if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
+                    print(f"Lockout triggered for {uid}")
+                    lockout_uid(uid)
+                    new_result = False
+            else:
+                client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+                print(f"Authenticated {uid} at {node_id} on {date}")
 
-        print(f"Authenticated {uid} at {node_id} on {date}")
 
     # Log every authentication attempt
     new_data = AuthenticateData(uid=uid, node_id=node_id, date=date, result=new_result)
     write_access_to_file(new_data)
+
+    # Lockout mechanism
+    if result:
+        if uid in uid_access_times_and_node_id:
+            last_access_time_and_node_id = uid_access_times_and_node_id[uid]
+            if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
+                print(f"Lockout triggered for {uid}")
+                lockout_uid(uid)
+                new_result = False
+        
+    uid_access_times_and_node_id[uid] = LockoutData(access_time=date, node_id=node_id)
 
     # Date is converted to format 2024-05-30 18:27:25
     date_str = new_data.date.strftime("%Y-%m-%d %H:%M:%S")
@@ -254,6 +288,8 @@ def update_access_list_schedule():
         most_frequent_uids_in_access_list = get_100_most_frequent_uids_in_access_list()
         client.publish(ACCESS_LIST_TOPIC, json.dumps(most_frequent_uids_in_access_list))
         print("Access list updated")
+
+        
 
     threading.Timer(PERIOD_UPDATE_ACCESS_LIST, update_access_list_schedule).start()
 

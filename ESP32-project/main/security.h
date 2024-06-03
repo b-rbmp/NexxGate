@@ -3,6 +3,7 @@
 
 int is_valid_uid(const char* uid);
 void add_uid(const char* uid);
+void remove_uid(const char* uid);
 void update_access_list(const char* uids[], int count);
 void save_uids_to_nvs();
 void load_uids_from_nvs();

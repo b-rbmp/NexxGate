@@ -368,6 +368,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         esp_mqtt_client_subscribe(client, RESPONSE_ACCESS_LIST_TOPIC, 0);
         esp_mqtt_client_subscribe(client, DEVICE_MAJORITY_VOTE_TOPIC, 0);
         esp_mqtt_client_subscribe(client, DEVICE_MAJORITE_RESPONSE_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, REMOVE_UID_TOPIC, 0);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -421,12 +422,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                         else
                         {
                             ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
-                            if (result->type == cJSON_True)
-                            {
-                                ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
-                                // Add the UID to the list of recognized UIDs locally
-                                add_uid(uid->valuestring);
-                            }
                         }
                     }
                     else
@@ -565,6 +560,16 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     cJSON_Delete(root);
                 }
             }
+        } else if (strncmp(event->topic, REMOVE_UID_TOPIC, event->topic_len) == 0) {
+            // The message has the format: DATA="13J0ASME", knowing it can have a maximum of 10 characters but less than that too.
+            // and remove the UID from the access list by calling void remove_uid(const char* uid);
+            char uid[11];
+            strncpy(uid, event->data, event->data_len);
+            uid[event->data_len] = '\0';
+            remove_uid(uid);
+            save_uids_to_nvs();
+            ESP_LOGI(MQTT_TAG, "UID: %s removed from access list by the Lockout Mechanism.\n", uid);
+        
         }
         break;
     case MQTT_EVENT_ERROR:
