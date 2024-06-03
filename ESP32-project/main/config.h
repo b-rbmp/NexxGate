@@ -33,6 +33,7 @@
 #define HTTP_TAG "HTTP_CLIENT"
 #define NVS_TAG "NVS"
 #define DEVICE_MAJORITY_VOTE_TAG "DEVICE_MAJORITY_VOTE"
+#define SECURITY_TAG "SECURITY"
 
 // MQTT
 #define ALLOW_AUTHENTICATION_TOPIC "/allow_authentication"
@@ -42,6 +43,7 @@
 #define AUTHENTICATE_TOPIC "/authenticate"
 #define DEVICE_MAJORITY_VOTE_TOPIC "/device_majority_vote"
 #define DEVICE_MAJORITE_RESPONSE_TOPIC "/device_majority_response"
+#define REMOVE_UID_TOPIC "/remove_uid"
 
 // NVS
 #define STORAGE_NAMESPACE "storage"

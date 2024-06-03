@@ -1,3 +1,4 @@
+import base64
 import os
 from typing import List
 import paho.mqtt.client as paho
@@ -8,6 +9,9 @@ import json
 from pydantic import BaseModel
 import api_bridge
 import time
+from dotenv import load_dotenv
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 # Constants
 EDGE_MQTT_BROKER = "localhost"
@@ -20,6 +24,8 @@ PERIOD_UPDATE_LOGS = 3600 * 24 * 7  # 1 week
 PERIOD_HEARTBEAT = 1800  # 30 minutes
 VOTE_TIMEOUT = 10  # 10 seconds
 LIMIT_ACCESS_LIST_DEVICES = 100
+LOCKOUT_PERIOD = timedelta(seconds=10) # 10 seconds lockout period
+KEYS_FOLDER = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\keys"
 
 # Topics
 AUTHENTICATE_TOPIC = "/authenticate"
@@ -27,6 +33,7 @@ ALLOW_AUTHENTICATE_TOPIC = "/allow_authentication"
 MAJORITY_VOTE_TOPIC = "/majority_vote"
 VOTE_RESPONSE_TOPIC = "/vote_response"
 ACCESS_LIST_TOPIC = "/access_list"
+REMOVE_UID_TOPIC = "/remove_uid"
 REQUEST_ACCESS_LIST_TOPIC = "/request_access_list"
 RESPONSE_ACCESS_LIST_TOPIC = "/response_access_list"
 
@@ -36,6 +43,19 @@ client_cloud = None
 access_list = []
 votes_received = []
 
+# Initialize empty private key
+private_key = None
+
+# Load private key
+with open(KEYS_FOLDER+"\\private_key.pem", "rb") as key_file:
+    private_key = serialization.load_pem_private_key(key_file.read(), password=None)
+
+class LockoutData(BaseModel):
+    access_time: datetime
+    node_id: str
+
+# Dictionary to store the last access time and node_id of each UID for the lockout period mechanism
+uid_access_times_and_node_id: dict[str, LockoutData] = {}
 
 class AuthenticateData(BaseModel):
     uid: str
@@ -55,6 +75,15 @@ class AuthenticatedData(BaseModel):
     uid: str
     node_id: str
     result: bool
+    signature: str
+
+class AccessListData(BaseModel):
+    uids: List[str]
+    signature: str
+
+class RemoveUidData(BaseModel):
+    uid: str
+    signature: str
 
 
 # MQTT Callbacks
@@ -97,6 +126,31 @@ def on_message_edge(client, userdata, msg):
         handle_vote_response(msg.payload)
     elif msg.topic == MAJORITY_VOTE_TOPIC:
         client.publish(VOTE_RESPONSE_TOPIC, json.dumps(access_list))
+
+# Function to sign data
+def sign_data(data):
+    global private_key
+    
+    signature = private_key.sign(
+        data,
+        padding.PKCS1v15(),
+        hashes.SHA256()
+    )
+    return base64.b64encode(signature).decode()
+
+# Function to create signed UID list with public key
+def create_signed_uid_list(uids: List[str]):
+    global private_key
+    uid_list_json = json.dumps(uids).encode('utf-8')
+    signature = sign_data(uid_list_json)
+    return {"uids": uids, "signature": signature}
+
+
+# Function to publish a signed UID list
+def publish_signed_uid_list(uids: List[str], topic: str):
+    global client, private_key
+    signed_uid_list = create_signed_uid_list(uids)
+    client.publish(topic, json.dumps(signed_uid_list))
 
 # Function to count UID frequency in logs
 def count_uid_frequency():
@@ -148,7 +202,12 @@ def update_access_list_from_request():
     # Get the 100 most frequent UIDs in the access list
     most_frequent_uids_in_access_list = get_100_most_frequent_uids_in_access_list()
 
-    client.publish(RESPONSE_ACCESS_LIST_TOPIC, json.dumps(most_frequent_uids_in_access_list))
+    # Publish the data signed with the private key
+    response_signed = create_signed_uid_list(most_frequent_uids_in_access_list)
+
+    access_data = AccessListData(uids=response_signed["uids"], signature=response_signed["signature"])
+
+    client.publish(RESPONSE_ACCESS_LIST_TOPIC, json.dumps(access_data.model_dump()))
 
 
 # Handle update request
@@ -165,6 +224,15 @@ def write_access_to_file(data: AuthenticateData):
         file.write(f"{date_str},{data.uid},{data.node_id},{data.result}\n")
 
 
+def lockout_uid(uid):
+    global access_list, client
+    if uid in access_list:
+        access_list.remove(uid)
+
+        # Create the signed UID removal data
+        remove_uid_data = RemoveUidData(uid=uid, signature=sign_data(uid.encode('utf-8')))
+        client.publish(REMOVE_UID_TOPIC, json.dumps(remove_uid_data.model_dump()))
+
 def process_authentication(data: AuthenticateData):
     global access_list
     global client
@@ -179,15 +247,40 @@ def process_authentication(data: AuthenticateData):
     # If negative result, check local access list
     if not result and uid in access_list:
         response_topic = ALLOW_AUTHENTICATE_TOPIC
-        authenticated_info = AuthenticatedData(uid=uid, result=True, node_id=node_id)
-        new_result = True
-        client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
 
-        print(f"Authenticated {uid} at {node_id} on {date}")
+        # Sign the data
+        authenticated_info = AuthenticatedData(uid=uid, result=True, node_id=node_id, signature=sign_data(uid.encode('utf-8')))
+        new_result = True
+        # Lockout mechanism
+        if new_result:
+            if uid in uid_access_times_and_node_id:
+                last_access_time_and_node_id = uid_access_times_and_node_id[uid]
+                if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
+                    print(f"Lockout triggered for {uid}")
+                    lockout_uid(uid)
+                    new_result = False
+                else:
+                    client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+                    print(f"Authenticated {uid} at {node_id} on {date}")
+            else:
+                client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+                print(f"Authenticated {uid} at {node_id} on {date}")
+
 
     # Log every authentication attempt
     new_data = AuthenticateData(uid=uid, node_id=node_id, date=date, result=new_result)
     write_access_to_file(new_data)
+
+    # Lockout mechanism
+    if result:
+        if uid in uid_access_times_and_node_id:
+            last_access_time_and_node_id = uid_access_times_and_node_id[uid]
+            if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
+                print(f"Lockout triggered for {uid}")
+                lockout_uid(uid)
+                new_result = False
+        
+    uid_access_times_and_node_id[uid] = LockoutData(access_time=date, node_id=node_id)
 
     # Date is converted to format 2024-05-30 18:27:25
     date_str = new_data.date.strftime("%Y-%m-%d %H:%M:%S")
@@ -252,8 +345,16 @@ def update_access_list_schedule():
             access_list.append(access["uid"])
 
         most_frequent_uids_in_access_list = get_100_most_frequent_uids_in_access_list()
-        client.publish(ACCESS_LIST_TOPIC, json.dumps(most_frequent_uids_in_access_list))
+
+        # Publish the data signed with the private key
+        response_signed = create_signed_uid_list(most_frequent_uids_in_access_list)
+
+        access_data = AccessListData(uids=response_signed["uids"], signature=response_signed["signature"])
+
+        client.publish(ACCESS_LIST_TOPIC, json.dumps(access_data.model_dump()))
         print("Access list updated")
+
+        
 
     threading.Timer(PERIOD_UPDATE_ACCESS_LIST, update_access_list_schedule).start()
 
@@ -290,7 +391,13 @@ def conclude_majority_vote():
     access_list = majority_vote
 
     most_frequent_uids_in_access_list = get_100_most_frequent_uids_in_access_list()
-    client.publish(ACCESS_LIST_TOPIC, json.dumps(most_frequent_uids_in_access_list))
+    
+    # Publish the data signed with the private key
+    response_signed = create_signed_uid_list(most_frequent_uids_in_access_list)
+
+    access_data = AccessListData(uids=response_signed["uids"], signature=response_signed["signature"])
+
+    client.publish(ACCESS_LIST_TOPIC, json.dumps(access_data.model_dump()))
     print("Majority vote concluded. Access list updated.")
 
 

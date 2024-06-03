@@ -368,6 +368,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         esp_mqtt_client_subscribe(client, RESPONSE_ACCESS_LIST_TOPIC, 0);
         esp_mqtt_client_subscribe(client, DEVICE_MAJORITY_VOTE_TOPIC, 0);
         esp_mqtt_client_subscribe(client, DEVICE_MAJORITE_RESPONSE_TOPIC, 0);
+        esp_mqtt_client_subscribe(client, REMOVE_UID_TOPIC, 0);
 
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -401,58 +402,144 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     cJSON *result = cJSON_GetObjectItem(root, "result");
                     cJSON *uid = cJSON_GetObjectItem(root, "uid");
                     cJSON *node_id = cJSON_GetObjectItem(root, "node_id");
-                    if (result != NULL)
-                    {
-                        // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
-                        if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
-                        {
-                            if (result->type == cJSON_True)
+                    cJSON *signature = cJSON_GetObjectItem(root, "signature");
+
+                    if (!cJSON_IsString(uid) || !cJSON_IsString(signature)) {
+                        ESP_LOGE(MQTT_TAG, "Invalid JSON format.");
+                        cJSON_Delete(root);
+                        return;
+                    } else {
+                        const char *signature_str = signature->valuestring;
+                        const char *uid_str = uid->valuestring;
+                        if (verify_signature(uid_str, signature_str) == 0) {
+                            if (result != NULL)
                             {
-                                // Add the UID to the list of recognized UIDs locally (removed and now using bulk access list update)
-                                // add_uid(uid->valuestring);
-                                result_edge_response = true;
+                                // Compare the UID in the response with the waiting UID and also the node ID with the current node ID
+                                if (strcmp(uid->valuestring, waiting_uid) == 0 && strcmp(node_id->valuestring, NODE_ID) == 0)
+                                {
+                                    if (result->type == cJSON_True)
+                                    {
+                                        // Add the UID to the list of recognized UIDs locally (removed and now using bulk access list update)
+                                        // add_uid(uid->valuestring);
+                                        result_edge_response = true;
+                                    }
+                                    else
+                                    {
+                                        result_edge_response = false;
+                                    }
+                                    waiting_edge_response = false;
+                                }
+                                else
+                                {
+                                    ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
+                                }
                             }
                             else
                             {
-                                result_edge_response = false;
+                                ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
                             }
-                            waiting_edge_response = false;
-                        }
-                        else
-                        {
-                            ESP_LOGW(MQTT_TAG, "Received response for a different UID or node ID.\n");
-                            if (result->type == cJSON_True)
-                            {
-                                ESP_LOGI(MQTT_TAG, "A new UID is being added to the local access list.\n");
-                                // Add the UID to the list of recognized UIDs locally
-                                add_uid(uid->valuestring);
+                            cJSON_Delete(root);
+                                } else {
+                                    ESP_LOGE(MQTT_TAG, "Invalid signature.");
+                                    cJSON_Delete(root);
+                                    return;
+                                }
                             }
-                        }
-                    }
-                    else
-                    {
-                        ESP_LOGE(MQTT_TAG, "Invalid JSON message received.\n");
-                    }
-                    cJSON_Delete(root);
                 }
             }
         } else if (strncmp(event->topic, RESPONSE_ACCESS_LIST_TOPIC, event->topic_len) == 0) {
             if (waiting_edge_response_access_list) {
                 waiting_edge_response_access_list = false;
                 // Check if the message is a JSON message
-                if (event->data[0] == '[') {
-                    // The message has the format: ["str1", "str2", ...]
+                if (event->data[0] == '{') {
+                    // The message has the format: { "uids": ["str1", "str2", ...], "signature": "str" }
                     // and update the access list by calling void update_access_list(const char* uids[], int count);
                     cJSON *root = cJSON_Parse(event->data);
                     if (root == NULL) {
                         ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
                         return;
                     }
+
+                    cJSON *uids_json = cJSON_GetObjectItem(root, "uids");
+                    cJSON *signature = cJSON_GetObjectItem(root, "signature");
+
+                    if (!cJSON_IsArray(uids_json) || !cJSON_IsString(signature)) {
+                        ESP_LOGE(MQTT_TAG, "Invalid JSON format.");
+                        cJSON_Delete(root);
+                        return;
+                    }
+
+                    const char *signature_str = signature->valuestring;
+                    char *uids_str = cJSON_PrintUnformatted(uids_json);
+                    if (uids_str == NULL) {
+                        ESP_LOGE(MQTT_TAG, "Failed to print JSON.");
+                        cJSON_Delete(root);
+                        return;
+                    }
+  
+                    if (verify_signature(uids_str, signature_str) == 0) {
+
+                        
+                        int count = cJSON_GetArraySize(uids_json);
+                        const char *uids[count];
+                        for (int i = 0; i < count; i++) {
+                            cJSON *item = cJSON_GetArrayItem(uids_json, i);
+                            if (cJSON_IsString(item)) {
+                                uids[i] = item->valuestring;
+                            } else {
+                                uids[i] = "";
+                            }
+                        }
+                        
+                        update_access_list(uids, count);
+                        cJSON_Delete(root);
+
+                        // Save UIDs to NVS periodically
+                        save_uids_to_nvs();
+
+                        ESP_LOGI(MQTT_TAG, "Access list updated.\n");
+                    } else {
+                        ESP_LOGE(MQTT_TAG, "UID list verification failed.");
+                        cJSON_Delete(root);
+                        return;
+                    }
+                }
+            }
+        } else if (strncmp(event->topic, ACCESS_LIST_TOPIC, event->topic_len) == 0) {
+            // Check if the message is a JSON message
+            if (event->data[0] == '{') {
+                // The message has the format: { "uids": ["str1", "str2", ...], "signature": "str" }
+                // and update the access list by calling void update_access_list(const char* uids[], int count);
+                cJSON *root = cJSON_Parse(event->data);
+                if (root == NULL) {
+                    ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                    return;
+                }
+
+                cJSON *uids_json = cJSON_GetObjectItem(root, "uids");
+                cJSON *signature = cJSON_GetObjectItem(root, "signature");
+
+                if (!cJSON_IsArray(uids_json) || !cJSON_IsString(signature)) {
+                    ESP_LOGE(MQTT_TAG, "Invalid JSON format.");
+                    cJSON_Delete(root);
+                    return;
+                }
+
+                const char *signature_str = signature->valuestring;
+                char *uids_str = cJSON_PrintUnformatted(uids_json);
+                if (uids_str == NULL) {
+                    ESP_LOGE(MQTT_TAG, "Failed to print JSON.");
+                    cJSON_Delete(root);
+                    return;
+                }
+
+                if (verify_signature(uids_str, signature_str) == 0) {
+
                     
-                    int count = cJSON_GetArraySize(root);
+                    int count = cJSON_GetArraySize(uids_json);
                     const char *uids[count];
                     for (int i = 0; i < count; i++) {
-                        cJSON *item = cJSON_GetArrayItem(root, i);
+                        cJSON *item = cJSON_GetArrayItem(uids_json, i);
                         if (cJSON_IsString(item)) {
                             uids[i] = item->valuestring;
                         } else {
@@ -467,36 +554,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     save_uids_to_nvs();
 
                     ESP_LOGI(MQTT_TAG, "Access list updated.\n");
-                }
-            }
-        } else if (strncmp(event->topic, ACCESS_LIST_TOPIC, event->topic_len) == 0) {
-            // Check if the message is a JSON message
-            if (event->data[0] == '[') {
-                // The message has the format: ["str1", "str2", ...]
-                // and update the access list by calling void update_access_list(const char* uids[], int count);
-                cJSON *root = cJSON_Parse(event->data);
-                if (root == NULL) {
-                    ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                } else {
+                    ESP_LOGE(MQTT_TAG, "UID list verification failed.");
+                    cJSON_Delete(root);
                     return;
                 }
-                
-                int count = cJSON_GetArraySize(root);
-                const char *uids[count];
-                for (int i = 0; i < count; i++) {
-                    cJSON *item = cJSON_GetArrayItem(root, i);
-                    if (cJSON_IsString(item)) {
-                        uids[i] = item->valuestring;
-                    } else {
-                        uids[i] = "";
-                    }
-                }
-                
-                update_access_list(uids, count);
-                cJSON_Delete(root);
-
-                // Save UIDs to NVS periodically
-                save_uids_to_nvs();
-                ESP_LOGI(MQTT_TAG, "Access list updated.\n");
             }
         } else if (strncmp(event->topic, DEVICE_MAJORITY_VOTE_TOPIC, event->topic_len) == 0) {
             // Check if the message is a JSON message
@@ -565,6 +627,40 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     cJSON_Delete(root);
                 }
             }
+        } else if (strncmp(event->topic, REMOVE_UID_TOPIC, event->topic_len) == 0) {
+            // Check if the message is a JSON message
+            if (event->data[0] == '{') {
+                // The message has the format: { "uid": "str", "signature": "str" }, knowing it can have a maximum of 10 characters but less than that too.
+                // and remove the UID from the access list by calling void remove_uid(const char* uid);
+
+                cJSON *root = cJSON_Parse(event->data);
+                if (root == NULL) {
+                    ESP_LOGE(MQTT_TAG, "Error parsing JSON\n");
+                    return;
+                }
+
+                cJSON *uid = cJSON_GetObjectItem(root, "uid");
+                cJSON *signature = cJSON_GetObjectItem(root, "signature");
+
+                if (!cJSON_IsString(uid) || !cJSON_IsString(signature)) {
+                    ESP_LOGE(MQTT_TAG, "Invalid JSON format.");
+                    cJSON_Delete(root);
+                    return;
+                }
+
+                const char *signature_str = signature->valuestring;
+                if (verify_signature(uid->valuestring, signature_str) == 0) {
+                    char *uid_str = uid->valuestring;
+                    remove_uid(uid_str);
+                    save_uids_to_nvs();
+                    ESP_LOGI(MQTT_TAG, "UID: %s removed from access list by the Lockout Mechanism.\n", uid_str);
+                } else {
+                    ESP_LOGE(MQTT_TAG, "Invalid signature.");
+                    cJSON_Delete(root);
+                    return;
+                }
+            }
+        
         }
         break;
     case MQTT_EVENT_ERROR:
