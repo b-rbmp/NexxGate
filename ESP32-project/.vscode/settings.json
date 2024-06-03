@@ -19,7 +19,8 @@
         "esp_log.h": "c",
         "nvs_flash.h": "c",
         "mqtt_client.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "base64.h": "c"
     },
     "C_Cpp.errorSquiggles": "enabled"
 }

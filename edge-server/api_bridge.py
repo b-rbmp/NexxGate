@@ -12,7 +12,7 @@ class AccessListResponseItem(BaseModel):
 # Check if the Cloud Server is connected
 def check_cloud_connection() -> bool:
     try:
-        response = requests.get(api_cloud + "health-check/")
+        response = requests.get(api_cloud + "health-check/", timeout=10)
         if response.status_code == 200:
             cloud_server_connected = True
         else:
@@ -27,7 +27,7 @@ def check_cloud_connection() -> bool:
 # Send a heartbeat to the Cloud Server
 def send_edge_heartbeat() -> bool:
     try:
-        response = requests.get(api_cloud + "edge_heartbeat/" + api_key)
+        response = requests.get(api_cloud + "edge_heartbeat/" + api_key, timeout=10)
         if response.status_code == 200:
             return True
         return False
@@ -38,7 +38,7 @@ def send_edge_heartbeat() -> bool:
 # Get updated access list from the Cloud Server
 def get_updated_access_list() -> list[AccessListResponseItem]:
     try :
-        response = requests.get(api_cloud + "access_list/")
+        response = requests.get(api_cloud + "access_list/", timeout=10)
         if response.status_code == 200:
             return response.json()
         return None
@@ -51,7 +51,7 @@ def upload_log_file(file_path: str) -> bool:
     try: 
         with open(file_path, 'rb') as f:
             files = {'file': f}
-            response = requests.post(api_cloud + "upload-log/", files=files)
+            response = requests.post(api_cloud + "upload-log/", files=files, timeout=10)
         
         if response.status_code == 201:
             print("Logs uploaded successfully")

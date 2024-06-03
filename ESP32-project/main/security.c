@@ -5,6 +5,10 @@
 #include "config.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/md.h"
+#include "mbedtls/error.h"
+#include "mbedtls/base64.h"
 
 char valid_uids[MAX_UIDS][UID_LENGTH]; // Array to store UIDs
 int head = 0; // Head index for the circular buffer
@@ -166,4 +170,49 @@ void load_uids_from_nvs() {
     uid_count = (int)uid_count_temp;
 
     ESP_LOGI(NVS_TAG, "UIDs loaded from NVS successfully.");
+}
+
+int verify_signature(const char *data, const char *signature_base64) {
+    unsigned char signature[256];
+    size_t sig_len;
+    int ret;
+
+    // Decode the base64 signature
+    ret = mbedtls_base64_decode(signature, sizeof(signature), &sig_len, (const unsigned char *)signature_base64, strlen(signature_base64));
+    if (ret != 0) {
+        ESP_LOGE(SECURITY_TAG, "Failed to decode signature: -0x%04X\n", -ret);
+        return -1;
+    }
+
+    // Initialize the public key context
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+
+    // Parse the public key
+    ret = mbedtls_pk_parse_public_key(&pk, (unsigned char *)PUBLIC_KEY_EDGE, strlen(PUBLIC_KEY_EDGE) + 1);
+    if (ret != 0) {
+        ESP_LOGE(SECURITY_TAG, "Failed to parse public key: -0x%04X\n", -ret);
+        mbedtls_pk_free(&pk);
+        return -1;
+    }
+
+    // Compute the SHA-256 hash of the data
+    unsigned char hash[32];
+    ret = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const unsigned char *)data, strlen(data), hash);
+    if (ret != 0) {
+        ESP_LOGE(SECURITY_TAG, "Failed to hash data: -0x%04X\n", -ret);
+        mbedtls_pk_free(&pk);
+        return -1;
+    }
+
+    // Verify the signature using PKCS#1 v1.5 padding
+    ret = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, sizeof(hash), signature, sig_len);
+    if (ret != 0) {
+        ESP_LOGW(SECURITY_TAG, "Signature verification failed: -0x%04X\n", -ret);
+    } else {
+        ESP_LOGI(SECURITY_TAG, "Signature verification succeeded\n");
+    }
+
+    mbedtls_pk_free(&pk);
+    return ret == 0 ? 0 : -1;
 }
