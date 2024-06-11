@@ -21,7 +21,7 @@
 #include "freertos/timers.h"
 #include "esp_sleep.h"
 #include "driver/uart.h"
-
+#include "certs.c" // Include the certificates, won't be included in the repository to avoid leaking the certificates
 
 static bool waiting_edge_response = false;
 static bool waiting_edge_response_access_list = false;
@@ -721,6 +721,14 @@ void mqtt_app_start(void)
 {
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = mqtt_address,
+        .broker.verification.certificate = ca_cert,
+        .credentials = {
+            .authentication = {
+                .certificate = client_cert,
+                .key = client_key,
+            },
+        },
+        .network.timeout_ms = 10000,
     };
 
     client = esp_mqtt_client_init(&mqtt_cfg);

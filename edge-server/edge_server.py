@@ -15,7 +15,12 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 # Constants
 EDGE_MQTT_BROKER = "localhost"
-EDGE_MQTT_PORT = 1883
+EDGE_MQTT_PORT = 8883
+EDGE_MQTT_CA_CERT = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\edge_certs\\ca_cert.pem"
+EDGE_MQTT_CERT = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\edge_certs\\client_cert.pem"
+EDGE_MQTT_KEY = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\edge_certs\\client_key.pem"
+EDGE_MQTT_TLS_VERSION = paho.ssl.PROTOCOL_TLS
+
 CLOUD_MQTT_BROKER = "40f10495a5e44f659aa663378f527c6e.s1.eu.hivemq.cloud"
 CLOUD_MQTT_PORT = 8883
 ACCESS_LOG_FILE = "access_log.txt"
@@ -25,7 +30,7 @@ PERIOD_HEARTBEAT = 1800  # 30 minutes
 VOTE_TIMEOUT = 10  # 10 seconds
 LIMIT_ACCESS_LIST_DEVICES = 100
 LOCKOUT_PERIOD = timedelta(seconds=10) # 10 seconds lockout period
-KEYS_FOLDER = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\keys"
+CLOUD_KEYS_FOLDER = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\cloud_keys"
 
 # Topics
 AUTHENTICATE_TOPIC = "/authenticate"
@@ -43,12 +48,12 @@ client_cloud = None
 access_list = []
 votes_received = []
 
-# Initialize empty private key
-private_key = None
+# Initialize empty cloud private key
+cloud_private_key = None
 
-# Load private key
-with open(KEYS_FOLDER+"\\private_key.pem", "rb") as key_file:
-    private_key = serialization.load_pem_private_key(key_file.read(), password=None)
+# Load private key for cloud
+with open(CLOUD_KEYS_FOLDER+"\\private_key.pem", "rb") as key_file:
+    cloud_private_key = serialization.load_pem_private_key(key_file.read(), password=None)
 
 class LockoutData(BaseModel):
     access_time: datetime
@@ -129,9 +134,9 @@ def on_message_edge(client, userdata, msg):
 
 # Function to sign data
 def sign_data(data):
-    global private_key
+    global cloud_private_key
     
-    signature = private_key.sign(
+    signature = cloud_private_key.sign(
         data,
         padding.PKCS1v15(),
         hashes.SHA256()
@@ -140,7 +145,7 @@ def sign_data(data):
 
 # Function to create signed UID list with public key
 def create_signed_uid_list(uids: List[str]):
-    global private_key
+    global cloud_private_key
     uid_list_json = json.dumps(uids).encode('utf-8')
     signature = sign_data(uid_list_json)
     return {"uids": uids, "signature": signature}
@@ -148,7 +153,7 @@ def create_signed_uid_list(uids: List[str]):
 
 # Function to publish a signed UID list
 def publish_signed_uid_list(uids: List[str], topic: str):
-    global client, private_key
+    global client, cloud_private_key
     signed_uid_list = create_signed_uid_list(uids)
     client.publish(topic, json.dumps(signed_uid_list))
 
@@ -429,6 +434,12 @@ update_logs_to_cloud()  # Start periodic updates
 # Initialize MQTT Client
 client = paho.Client(
     client_id=None, userdata=None, protocol=paho.MQTTv311, clean_session=True
+)
+client.tls_set(
+    ca_certs=EDGE_MQTT_CA_CERT,
+    certfile=EDGE_MQTT_CERT,
+    keyfile=EDGE_MQTT_KEY,
+    tls_version=EDGE_MQTT_TLS_VERSION,
 )
 client.on_connect = on_connect_edge
 client.on_message = on_message_edge

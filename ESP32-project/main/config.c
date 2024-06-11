@@ -5,7 +5,7 @@
 
 const char *ssid = "WIFI-SPAZIO-IMPERO";
 const char *pass = "SpazioImpero";
-const char *mqtt_address = "mqtt://172.27.73.111:1883";
+const char *mqtt_address = "mqtts://172.27.73.117:8883";
 
 #define CONFIG_TAG "CONFIG"
 
