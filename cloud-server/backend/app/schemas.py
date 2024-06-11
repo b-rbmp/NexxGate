@@ -15,6 +15,7 @@ class AuthenticateData(BaseModel):
     node_id: str | None = None
     date: datetime | None = None
     result: bool | None = None
+    api_key: str | None = None
 
 
 # AccessLog
@@ -23,6 +24,7 @@ class AccessLogBase(HashableBaseModel):
     timestamp: datetime | None = None
     uid: str | None = None
     granted: bool | None = None
+    edge_server_id: int | None = None
 
 
 class AccessLogInDBBase(AccessLogBase):

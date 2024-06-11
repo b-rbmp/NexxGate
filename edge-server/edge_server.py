@@ -14,6 +14,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 # Constants
+API_KEY = "aj1jD9mf11"
+
 EDGE_MQTT_BROKER = "localhost"
 EDGE_MQTT_PORT = 8883
 EDGE_MQTT_CA_CERT = "D:\\Documents\\GitHub\\NexxGate\\edge-server\\edge_certs\\ca_cert.pem"
@@ -74,6 +76,7 @@ class AuthenticateDataOnlyStr(BaseModel):
     node_id: str
     date: str
     result: str
+    api_key: str
 
 
 class AuthenticatedData(BaseModel):
@@ -170,7 +173,7 @@ def count_uid_frequency():
     uid_counter = Counter()
 
     for log in logs:
-        date_str, uid, node_id, result = log.strip().split(",")
+        date_str, uid, node_id, result, api_key = log.strip().split(",")
         log_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
 
         if log_date >= past_week:
@@ -226,7 +229,7 @@ def write_access_to_file(data: AuthenticateData):
     with open(ACCESS_LOG_FILE, "a") as file:
         # Format:  %Y-%m-%d %H:%M:%S,user1,NodeA,true
         date_str = data.date.strftime("%Y-%m-%d %H:%M:%S")
-        file.write(f"{date_str},{data.uid},{data.node_id},{data.result}\n")
+        file.write(f"{date_str},{data.uid},{data.node_id},{data.result},{API_KEY}\n")
 
 
 def lockout_uid(uid):
@@ -294,6 +297,7 @@ def process_authentication(data: AuthenticateData):
         node_id=new_data.node_id,
         date=date_str,
         result=str(new_data.result),
+        api_key=API_KEY,
     )
 
     if cloud_server_connected:

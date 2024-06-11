@@ -3,7 +3,6 @@ import styled from '@emotion/styled';
 import { Link, useLocation } from 'react-router-dom';
 import { RxDashboard } from "react-icons/rx";
 import { RiHistoryFill } from "react-icons/ri";
-import { RiSettings2Line } from "react-icons/ri";
 import logo from "../images/logo.png";
 
 const Logo = styled.img`

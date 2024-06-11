@@ -25,7 +25,7 @@ def on_message(client, userdata, msg):
         print("Received message: " + str(msg.payload))
         m_decode=str(msg.payload.decode("utf-8","ignore"))
         try:
-            # Received message: b'{"uid": "12345", "node_id": "A5EF1877", "date": "2021-09-01 12:00:00", "result": true}'
+            # Received message: b'{"uid": "12345", "node_id": "A5EF1877", "date": "2021-09-01 12:00:00", "result": true. "api_key": "jd99ada"}'
 
             # Decode the incoming message above instead of the one below
             m_in=json.loads(m_decode) #decode json data
@@ -37,6 +37,8 @@ def on_message(client, userdata, msg):
                 print("No result key")
             elif "date" not in m_in:
                 print("No date key")
+            elif "api_key" not in m_in:
+                print("No api_key key")
             else:
                 try:
                     db: Session = get_db_standalone()
@@ -46,15 +48,25 @@ def on_message(client, userdata, msg):
                         uid=m_in['uid'],
                         node_id=m_in['node_id'],
                         date=datetime.datetime.strptime(m_in['date'], "%Y-%m-%d %H:%M:%S"),
-                        result=m_in['result']
+                        result=m_in['result'],
+                        api_key=m_in['api_key']
                     )
+                    
+                    # Get edge server by api_key
+                    edge_server = db.query(models.EdgeServer).filter(models.EdgeServer.api_key == data.api_key).first()
+                    if edge_server is None:
+                        print("No edge server found")
+                        return
+                    
+
 
                     # Log every authentication attempt
                     access_log = schemas.AccessLogCreateIn(
                         device_node_id=data.node_id,
                         timestamp=data.date,
                         uid=data.uid,
-                        granted=data.result
+                        granted=data.result,
+                        edge_server_id=edge_server.id
                     )
 
                     access_log = models.AccessLog(**access_log.model_dump())

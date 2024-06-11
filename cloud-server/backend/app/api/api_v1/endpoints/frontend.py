@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app import schemas, models
-from app.db.db_manager import crud_access_log
+from app.db.db_manager import crud_access_log, crud_edge_server
 from app.dependencies import get_db
 
 router = APIRouter()
@@ -84,13 +84,17 @@ async def get_access_logs(
     access_logs_original: List[models.AccessLog] = access_logs["elements"]
     access_logs_for_frontend: List[schemas.AccessLogsForFrontendResponseItem] = []
     for access_log in access_logs_original:
+        # For each edge server, get the name
+        edge_server_id = access_log.edge_server_id
+        edge_server = crud_edge_server.get_by_id(db=db, id=edge_server_id)
+
         access_logs_for_frontend.append(
             schemas.AccessLogsForFrontendResponseItem(
                 device_node_id=access_log.device_node_id,
                 timestamp=access_log.timestamp,
                 uid=access_log.uid,
                 granted=access_log.granted,
-                edge_server_name="TODO",
+                edge_server_name=edge_server.name,
             )
         )
 

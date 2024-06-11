@@ -51,6 +51,7 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
         uid = row[1]
         node_id = row[2]
         result = row[3]
+        api_key = row[4]
 
         # Convert result to boolean
         if result == "True":
@@ -60,6 +61,12 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
         else:
             raise HTTPException(status_code=400, detail="Invalid access log result")
         
+        # Find the edge server by api_key
+        edge_server = crud_edge_server.get_by_api_key(db=db, api_key=api_key)
+        if edge_server is None:
+            raise HTTPException(status_code=404, detail="Edge Server not found")
+        
+
         # Check if the log already exists in the database
         existing_log = db.query(AccessLog).filter_by(timestamp=timestamp, device_node_id=node_id).first()
         if existing_log is None:
@@ -67,7 +74,8 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
                 device_node_id=node_id,
                 timestamp=timestamp,
                 uid=uid,
-                granted=result
+                granted=result,
+                edge_server_id=edge_server.id
             )
             logs_to_add.append(log)
     

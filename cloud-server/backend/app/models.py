@@ -17,6 +17,7 @@ class EdgeServer(Base):
 
     last_seen = Column(DateTime, nullable=True)
     devices = relationship("Device", back_populates="edge_server")
+    access_logs = relationship("AccessLog", back_populates="edge_server")
 
 
 class Device(Base):
@@ -37,10 +38,13 @@ class AccessLog(Base):
     timestamp = Column(DateTime, nullable=False, index=True)
     uid = Column(String(20), nullable=False, index=True)
     granted = Column(Boolean, nullable=False, index=True)
+    edge_server_id = Column(Integer, ForeignKey('edge_server.id'), nullable=False, index=True)
+    edge_server = relationship("EdgeServer")
+
 
     # Make primary key from device_node_id and timestamp
     __table_args__ = (
-        PrimaryKeyConstraint('device_node_id', 'timestamp'),
+        PrimaryKeyConstraint('device_node_id', 'timestamp', 'edge_server_id'),
     )
 
 class UserAuth(Base):
