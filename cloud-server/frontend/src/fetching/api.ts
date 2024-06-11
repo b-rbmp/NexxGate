@@ -2,7 +2,7 @@
 import axios from "axios";
 import { TAccessLogFrontEnd, TAccessLogMetricsItem } from "./types";
 
-const API_URL = "http://localhost:8000/nexxgate/api/v1/";
+const API_URL = "http://34.228.42.62:8000/nexxgate/api/v1/";
 
 export const getAccessLogMetrics = async() => {
     const { data }: {data: TAccessLogMetricsItem[]} = await axios.get(
