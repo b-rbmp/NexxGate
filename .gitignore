@@ -1,4 +1,4 @@
 *.csv
-*.txt
+access_log.txt
 *.pem
 
