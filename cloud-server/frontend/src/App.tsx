@@ -1,14 +1,11 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Box, ChakraProvider, Divider, Flex, Progress, Stack, Text } from '@chakra-ui/react';
+import { Box, ChakraProvider, Flex } from '@chakra-ui/react';
 import Navbar from './components/Navbar';
-import { FaShoppingCart, FaBus, FaHome, FaUtensils, FaFilm } from 'react-icons/fa';
 import Dashboard from './pages/Dashboard';
+import History from './pages/History';
 import {
-  BrowserRouter,
-  createBrowserRouter,
   Route,
-  RouterProvider,
   Routes,
 } from "react-router-dom";
 
@@ -27,6 +24,7 @@ function App() {
               <Box width="80%" bg="gray.100" p="5" borderLeftRadius="40">
                 <Routes>
                   <Route path='/' element={<Dashboard/>}/>
+                  <Route path='/history' element={<History/>}/>
                 </Routes>
               </Box>
             </Flex>

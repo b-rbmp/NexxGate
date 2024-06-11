@@ -57,12 +57,6 @@ function Navbar() {
                   <Button>History</Button>
                 </NavButton>
               </Link>
-              <Link to="/admin" style={{textDecoration: "none"}}>
-                <NavButton selected={location.pathname === "/admin"}>
-                    <RiSettings2Line fontSize='large'/>
-                    <Button>Admin</Button>
-                </NavButton>
-              </Link>
           </Stack>
       </Box>
      );
