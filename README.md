@@ -157,12 +157,70 @@ It also sends a heartbeat message directly to the backend server using HTTP, in 
 
 Finally, the ESP32 Node implements an energy-saving mode to reduce energy consumption during idle times, where if 30 minutes passes without any scan being recorded, the ESP32 enters a sleep-wake cycle of 3s, where 3s passes being light sleep, and 1.5s passes being active. If an RFID is scanned during this 1.5s, the 30 minutes interval resets.
 
+## Results <a name = "measurements"></a>
 
-## Measurements <a name = "measurements"></a>
+The NexxGate project was successfully implemented and tested, in each of the Problem Statements listed in the "Objectives" section, the following results were obtained:
 
+1. **Reliability and Robustness of Access**: The Persistent Rolling Access List, ESP32 Node Cooperation, and Edge Server Cooperation mechanisms were successfully implemented and tested. The devices were able to authenticate known users even when the Edge Server or Cloud Server was offline, and the devices were able to cooperate with each other to define the access list and ensure that the devices can authenticate users even when the Cloud Server is down.
+
+2. **Security**: The End-to-End Encryption, Digital Signature Verification, and Unique Key Lockout Mechanism were successfully implemented and tested. The communication between the ESP32 nodes and the Edge Server was encrypted using TLS, ensuring data privacy and integrity. The devices were able to verify the authenticity and integrity of the cached UID list using digital signatures, and the Unique Key Lockout Mechanism was able to block UIDs that were scanned by different nodes within a defined lockout period.
+
+3. **Energy Consumption during idle times**: The Energy Savings Mode was successfully implemented and tested, and the wake-sleep cycle of 3s was sufficient to not impact the user experience, while still reducing energy consumption during idle times.
+
+
+The following measurements were obtained during the testing of the NexxGate project:
+
+1. Time to Open Solenoid Lock:
+    Initial Goal: < 1s
+    Measuring Procedure: Measure Time to Open 20 times, one for each scenario (UID Locally Cached, UID Not Locally Cached), using a stopwatch.
+    Results: 
+        - UID Locally Cached: < 0.1s (could not be measured since it was faster than human reaction time)
+        - UID Not Locally Cached: ~0.75-1s
+
+2. True Positive Rate:
+    Initial Goal: > 99%
+    Measuring Procedure: Scan 50 times, measure the number of successful authentications.
+    Results: 48/50 = 96% (Sensor was not able to read the UID in 2 cases, where the user had to scan again)
+
+3. False Positive Rate:
+    Initial Goal: < 1%
+    Measuring Procedure: Scan 50 times with an Unauthenticated UID, measure the number of successful authentications.
+    Results: 0/50 = 0% (No false positives were detected)
+    
+4. Energy Savings Mode:
+    Due to unavaiability of the INA219 sensor, the energy consumption was not measured, but the energy savings mode was successfully implemented and tested. The estimates for the energy savings were calculated based on the ESP32's power consumption in light sleep mode and the RC522 RFID Module power consumption under normal operation and idle operation:
+    - ESP32:
+        - ESP32 Active Mode Rx and listening: 80mA
+        - ESP32 Light Sleep Mode: 0.8mA
+    - RC522 RFID Module:
+        - RC522 Normal Mode: 19mA
+        - RC522 Idle Mode: 13mA
+
+    For the Energy Savings Mode, Since the ESP32 is in light sleep mode for 3s and active for 1.5s, the average power consumption of the ESP32, considering it is under 3,3V is:
+    - ESP32 Average Power Consumption: (0.8mA * 3s + 80mA * 1.5s) * 3.3V / 4.5s = 89.76mW
+    For the RC522 RFID Module, the average power consumption is:
+    - RC522 Average Power Consumption: (13mA * 3s + 19mA * 1.5s) * 3.3V / 4.5s = 49.5mW
+
+    For the normal operation, without the energy savings mode, the average power consumption is:
+    - ESP32 Average Power Consumption: 3.3V * 80mA = 264mW
+    - RC522 Average Power Consumption: 3.3V * 19mA = 62.7mW
+
+    Therefore, the energy savings mode reduces the average power consumption by:
+    - ESP32: 174.24mW
+    - RC522: 13.2mW
+
+    Total Average Power Consumption - Normal Operation: 326.44mW
+    Total Average Power Consumption - Energy Savings Mode: 187.44mW
+    Total Average Power Consumption - Reduction: 139mW (42.6% reduction in power consumption during idle times)
 
 ## Demo <a name = "demo"></a>
 
+The NexxGate Dashboard is available at the following link: [NexxGate Dashboard](http://nexxgate.s3-website-us-east-1.amazonaws.com)
+
+The Swagger Interface with the API Documentation is available at the following link: [NexxGate API Documentation](https://nexxgate-backend.onrender.com/nexxgate/api/v1/docs)
+
 ## Installation <a name = "installation"></a>
+
+
 
 
