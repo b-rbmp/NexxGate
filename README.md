@@ -105,7 +105,7 @@ Listed below are each of the solutions implemented in the NexxGate project, for 
 
             A diagram showing the Unique Key Lockout Mechanism is shown below:
 
-            ![Unique Key Lockout](/docs/images/architecture/lockout.png "Unique Key Lockout")
+            ![Unique Key Lockout](/docs/images/architecture/Lockout.png "Unique Key Lockout")
 
 3. **Energy Consumption during idle times**: The system should consume minimal energy when idle to reduce costs and environmental impact, example: Running during off-hours.
     - **Solution**: Implemented a Energy Savings Mode, where if 30 minutes passes without any scan being recorded, the ESP32 enters a sleep-wake cycle of 3s, where 3s passes being light sleep, and 1.5s passes being active. If an RFID is scanned during this 1.5s, the 30 minutes interval resets.
