@@ -6,5 +6,8 @@
     ],
     "cmake.configureOnOpen": true,
     "idf.flashType": "JTAG",
-    "cmake.sourceDirectory": "D:/Documents/GitHub/NexxGate/ESP32-project"
+    "cmake.sourceDirectory": "D:/Documents/GitHub/NexxGate/ESP32-project",
+    "files.associations": {
+        "rc522.h": "c"
+    }
 }

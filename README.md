@@ -13,7 +13,7 @@ Next-generation gateway for secure keyless access, leveraging NFC and ESP32
 + [About](#about)
 + [Features](#features)
 + [Architecture](#architecture)
-+ [Cloud Server](#cloud-server)
++ [Backend](#backend)
 + [Frontend](#frontend)
 + [ESP32 Project](#esp32-project)
 + [Measurements](#measurements)
@@ -94,7 +94,7 @@ Listed below are each of the solutions implemented in the NexxGate project, for 
     - **Tampering / Interception**: Unauthorized users may attempt to intercept packets and clone credentials to gain unauthorized access.
         - **Solution**: End-to-End Encryption - All communication between the ESP32 nodes and the Edge Server is done using MQTT with TLS encryption. This ensures that all data packets are encrypted and cannot be intercepted by unauthorized users.
     - **Data Integrity**: Data packets may be altered in transit, leading to unauthorized access or denial of service.
-        - **Solution**: Using digital signatures to verify the authenticity and integrity of the cached UID list -> The edge server signs the data with its private key before sending it to the NFC devices, and the devices uses the server's public key to verify the signature, ensuring that it has not been compromised, before updating the list.
+        - **Solution**: Using digital signatures to verify the authenticity and integrity of the cached UID list assymetrically -> The edge server signs the data with its private key before sending it to the NFC devices, and the devices uses the server's public key to verify the signature, ensuring that it has not been compromised, before updating the list.
 
             A diagram showing the Digital Signature Verification mechanism is shown below:
 
@@ -105,17 +105,57 @@ Listed below are each of the solutions implemented in the NexxGate project, for 
 
             A diagram showing the Unique Key Lockout Mechanism is shown below:
 
-            ![Unique Key Lockout](/docs/images/architecture/lockout.png "Unique Key Lockout")
+            ![Unique Key Lockout](/docs/images/architecture/signature_system.png "Unique Key Lockout")
 
 3. **Energy Consumption during idle times**: The system should consume minimal energy when idle to reduce costs and environmental impact, example: Running during off-hours.
     - **Solution**: Implemented a Energy Savings Mode, where if 30 minutes passes without any scan being recorded, the ESP32 enters a sleep-wake cycle of 3s, where 3s passes being light sleep, and 1.5s passes being active. If an RFID is scanned during this 1.5s, the 30 minutes interval resets.
 
 
-### Cloud Server <a name = "cloud-server"></a>
+### Backend <a name = "backend"></a>
+
+The backend server is implemented using FastAPI, a modern, fast (high-performance), web framework for building APIs based on standard Python type hints. The backend server is responsible for managing users, access lists, and logs, and it communicates with the Edge Servers using MQTT with TLS encryption. The backend server provides RESTful APIs for managing users, access lists, and logs, and it also provides APIs for real-time communication with the frontend web interface, and also for Heartbeat communication with the Edge Servers and the ESP32 Nodes.
+
+It communicates with the PostgreSQL database to store and retrieve user information, access lists, and logs. The Access Lists are available for each Edge Server which obtains the list using the RESTful API provided by the backend server. The backend also listens to the cloud MQTT broker for authentication messages from the Edge Servers, which is used to instantly update the logs. There is also a fallback mechanism where regularly the Edge Servers send their local access logs to the backend server, which the difference between the logs is calculated and the logs are updated.
+
+The Swagger interface with the API documentation is available at the endpoint provided in the Demo section, and can be seen in the image below:
+
+![Swagger Interface](/docs/images/backend/swagger.png "Swagger Interface")
 
 ### Frontend <a name = "frontend"></a>
 
+The frontend web interface is implemented using React, a popular JavaScript library for building user interfaces. The frontend provides a user-friendly interface for viewing key metrics and the access logs. Currently the management of users and access lists is done through the backend server, due to time constraints, but the frontend can be easily extended to provide these features. The frontend communicates with the backend server using RESTful APIs to retrieve the access logs and metrics.
+
+A screenshot of the frontend web interface is shown below:
+
+![Frontend Interface](/docs/images/frontend/dashboard.png "Frontend Interface")
+
 ### ESP32 Project <a name = "esp32-project"></a>
+
+The ESP32 project is responsible for the firmware of the ESP32 microcontroller, which is the core of the NexxGate system. The ESP32 project is implemented using ESP-IDF. The Hardware list for the prototype is as follows:
+- Heltec WiFi LoRa 32(V3) Development Board
+- RC522 RFID Module
+- Relay Module
+- Solenoid Lock
+- Red, Yellow and Blue LEDs
+- 3 Resistors (2000 Ohm)
+- 12V Power Supply
+- 5V Power Supply
+
+4 GPIOs (35, 34, 33, 47) were used to configure a SPI interface with the RC522 RFID Module, 3 GPIOs (45, 42, 43) were used to control the LEDs and 1 GPIO (7) was used to control the Relay. 
+
+The ESP32 Node is responsible for reading the NFC tags/cards using the RC522 RFID Module, and it authenticates users by comparing the scanned UID with the access list stored in the ESP32's non-volatile memory.
+
+The RC522 NFC Reader is interfaced using the [ESP-IDF-RC522 Library](https://github.com/abobija/esp-idf-rc522).
+
+The Access List only has the 100 most frequent users in that Edge Server region, and in case a UID is not found in the list, the ESP32 Node sends an access request to the Edge Server using the /authenticate topic, which then checks the UID against the full access list and sends a response back to the ESP32 Node under the /allow_authentication topic. In case two different ESP32 Nodes scan the same UID within a defined lockout period (10 seconds), the Edge Server will block the UID and propagate the changes to the other nodes in the local network using the /remove_uid topic.
+
+The access list is updated periodically by requesting it over the "/request_access_list" topic, where the Edge Server will send the updated list to the ESP32 Node under the "/response_access_list" topic. The ESP32 Node verifies assymetrically the authenticity and integrity of the access list by using the public key of the Edge Server to verify the signature sent along with the Access List with the mbedtls library, before saving it to the non-volatile memory.
+
+In case the Edge Server is down, the ESP32 Node will communicate with other ESP32 Nodes in the same Edge Network to generate a consensus on the access list, where a node starts a majority vote process to determine the access list by sending a message to the "/device_majority_vote" topic, and the other nodes respond with their access list under the "/device_majority_response" topic, and the access list with the most votes is then used by the node.
+
+It also sends a heartbeat message directly to the backend server using HTTP, in order to signal that the device is still operational, and the backend server can then use this information to keep track of the devices that are online.
+
+Finally, the ESP32 Node implements an energy-saving mode to reduce energy consumption during idle times, where if 30 minutes passes without any scan being recorded, the ESP32 enters a sleep-wake cycle of 3s, where 3s passes being light sleep, and 1.5s passes being active. If an RFID is scanned during this 1.5s, the 30 minutes interval resets.
 
 
 ## Measurements <a name = "measurements"></a>
