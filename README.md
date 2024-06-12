@@ -66,7 +66,7 @@ The Edge Server is responsible for managing the access control devices (ESP32 No
 
 For every local edge network, a mosquitto MQTT broker is deployed to handle the communication between the Edge Servers and the ESP32 Nodes. The Edge Servers communicate with the Cloud Server using a cloud MQTT broker, which is responsible for handling the communication between the Cloud Server and the Edge Servers, which was deployed using HiveMQ Cloud.
 
-The ESP32 Node is the access control device that interacts with the NFC tags/cards and communicates with the Edge Server to authenticate users. The ESP32 Node is implemented using ESP-IDF (C), and it uses the ESP32's NFC capabilities to read the NFC tags/cards. The ESP32 Node stores a rolling list of recent and frequent user credentials, ensuring that it can authenticate known users even when the Edge Server is offline. The ESP32 Node also implements an energy-saving mode to reduce energy consumption during idle times. The communication between the ESP32 Node and the Edge Server is done using MQTT with TLS encryption. It has a signature verification mechanism to ensure the authenticity and integrity of the cached UID list by using the public key of the Edge Server to verify the signature sent along with the Access List. For the Prototype, the ESP32 Node is connected to a relay module and a Solenoid Lock to simulate the door lock mechanism.
+The ESP32 Node is the access control device that interacts with the NFC tags/cards and communicates with the Edge Server to authenticate users. The ESP32 Node is implemented using ESP-IDF (C), and it uses the ESP32's NFC capabilities to read the NFC tags/cards. The ESP32 Node stores a rolling list of recent and frequent user credentials, ensuring that it can authenticate known users even when the Edge Server is offline. The ESP32 Node also implements an energy-saving mode to reduce energy consumption during idle times. The communication between the ESP32 Node and the Edge Server is done using MQTT with TLS encryption. It has a signature verification mechanism to ensure the authenticity and integrity of the cached UID list by using the public key of the Edge Server to verify the signature sent along with the Access List. For the Prototype, the ESP32 Node is connected to a relay module and a Solenoid Lock to simulate the door lock mechanism. In case the Edge Server is down, the ESP32 Node can cooperate with other ESP32 Nodes in the same Edge Network to generate a consensus on the access list.
 
 The overall architecture of the NexxGate project is shown in the diagram below:
 
@@ -185,21 +185,21 @@ The NexxGate project was successfully implemented and tested, in each of the Pro
 The following measurements were obtained during the testing of the NexxGate project:
 
 1. Time to Open Solenoid Lock:
-    Initial Goal: < 1s
-    Measuring Procedure: Measure Time to Open 20 times, one for each scenario (UID Locally Cached, UID Not Locally Cached), using a stopwatch.
-    Results: 
+    - Initial Goal: < 1s
+    - Measuring Procedure: Measure Time to Open 20 times, one for each scenario (UID Locally Cached, UID Not Locally Cached), using a stopwatch.
+    - Results: 
         - UID Locally Cached: < 0.1s (could not be measured since it was faster than human reaction time)
         - UID Not Locally Cached: ~0.75-1s
 
 2. True Positive Rate:
-    Initial Goal: > 99%
-    Measuring Procedure: Scan 50 times, measure the number of successful authentications.
-    Results: 48/50 = 96% (Sensor was not able to read the UID in 2 cases, where the user had to scan again)
+    - Initial Goal: > 99%
+    - Measuring Procedure: Scan 50 times, measure the number of successful authentications.
+    - Results: 48/50 = 96% (Sensor was not able to read the UID in 2 cases, where the user had to scan again)
 
 3. False Positive Rate:
-    Initial Goal: < 1%
-    Measuring Procedure: Scan 50 times with an Unauthenticated UID, measure the number of successful authentications.
-    Results: 0/50 = 0% (No false positives were detected)
+    - Initial Goal: < 1%
+    - Measuring Procedure: Scan 50 times with an Unauthenticated UID, measure the number of successful authentications.
+    - Results: 0/50 = 0% (No false positives were detected)
     
 4. Energy Savings Mode:
     Due to unavaiability of the INA219 sensor, the energy consumption was not measured, but the energy savings mode was successfully implemented and tested. The estimates for the energy savings were calculated based on the ESP32's power consumption in light sleep mode and the RC522 RFID Module power consumption under normal operation and idle operation:
