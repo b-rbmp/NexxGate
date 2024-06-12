@@ -24,4 +24,5 @@ if settings.BACKEND_CORS_ORIGINS:
 # Include the API Router with the prefix defined in the settings
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Start the MQTT client
 mqtt.client.loop_start()

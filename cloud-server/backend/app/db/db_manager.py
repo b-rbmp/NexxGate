@@ -9,12 +9,23 @@ from datetime import datetime
 from app import models, schemas
 from app.db.db import engine
 
-
 class CRUDAccessLog:
+    """
+    This class provides CRUD operations for the AccessLog model.
+    """
 
     @staticmethod
     def create(db: Session, item: schemas.AccessLogCreateOut):
+        """
+        Create a new AccessLog record in the database.
 
+        Args:
+            db (Session): The database session.
+            item (schemas.AccessLogCreateOut): The AccessLog data to be created.
+
+        Returns:
+            models.AccessLog: The created AccessLog record.
+        """
         db_item = models.AccessLog()
         # Update model class variable from requested fields
         for var, value in vars(item).items():
@@ -35,6 +46,22 @@ class CRUDAccessLog:
         uid: str | None = None,
         granted: bool | None = None,
     ) -> Dict[List[models.AccessLog], int]:
+        """
+        Get a list of AccessLog records from the database based on the provided filters.
+
+        Args:
+            db (Session): The database session.
+            skip (int | None): The number of records to skip.
+            limit (int | None): The maximum number of records to retrieve.
+            device_node_id (int | None): The device node ID to filter by.
+            start_date (datetime | None): The start date to filter by.
+            end_date (datetime | None): The end date to filter by.
+            uid (str | None): The UID to filter by.
+            granted (bool | None): The granted status to filter by.
+
+        Returns:
+            Dict[List[models.AccessLog], int]: A dictionary containing the list of AccessLog records and the total count.
+        """
 
         response_get = {"elements": List[models.AccessLog], "count-total": int}
 
@@ -71,6 +98,18 @@ class CRUDAccessLog:
 
     @staticmethod
     def update(db: Session, item: schemas.AccessLogUpdateIn, db_item: models.AccessLog):
+        """
+        Update an existing AccessLog record in the database.
+
+        Args:
+            db (Session): The database session.
+            item (schemas.AccessLogUpdateIn): The updated AccessLog data.
+            db_item (models.AccessLog): The AccessLog record to be updated.
+
+        Returns:
+            models.AccessLog: The updated AccessLog record.
+        """
+
         # Update model class variable from requested fields
         for var, value in vars(item).items():
             setattr(db_item, var, value) if value is not None else None
@@ -82,12 +121,31 @@ class CRUDAccessLog:
 
     @staticmethod
     def delete(db: Session, db_item: models.AccessLog) -> bool:
+        """
+        Delete an existing AccessLog record from the database.
+
+        Args:
+            db (Session): The database session.
+            db_item (models.AccessLog): The AccessLog record to be deleted.
+
+        Returns:
+            bool: True if the deletion is successful, False otherwise.
+        """
         db.delete(db_item)
         db.commit()
         return True
 
     @staticmethod
     def count_all(db: Session) -> int:
+        """
+        Count the total number of unique AccessLog records in the database.
+
+        Args:
+            db (Session): The database session.
+
+        Returns:
+            int: The total count of unique AccessLog records.
+        """
         return db.query(
             distinct(
                 tuple_(models.AccessLog.device_node_id, models.AccessLog.timestamp)
@@ -96,7 +154,15 @@ class CRUDAccessLog:
 
     @staticmethod
     def get_last_record(db: Session) -> models.AccessLog:
+        """
+        Get the last recorded AccessLog from the database.
 
+        Args:
+            db (Session): The database session.
+
+        Returns:
+            models.AccessLog: The last recorded AccessLog.
+        """
         return (
             db.query(models.AccessLog)
             .order_by(models.AccessLog.timestamp.desc())
@@ -105,18 +171,50 @@ class CRUDAccessLog:
 
 
 class CRUDDevice:
+    """
+    This class provides CRUD operations for the Device model.
+    """
 
     @staticmethod
     def get_by_node_id(db: Session, node_id: str) -> models.Device:
+        """
+        Get a Device record from the database based on the provided node ID.
+
+        Args:
+            db (Session): The database session.
+            node_id (str): The node ID to filter by.
+
+        Returns:
+            models.Device: The Device record.
+        """
         return db.query(models.Device).filter(models.Device.node_id == node_id).first()
 
     @staticmethod
     def get_by_api_key(db: Session, api_key: str) -> models.Device:
+        """
+        Get a Device record from the database based on the provided API key.
+
+        Args:
+            db (Session): The database session.
+            api_key (str): The API key to filter by.
+        
+        Returns:
+            models.Device: The Device record.
+        """
         return db.query(models.Device).filter(models.Device.api_key == api_key).first()
 
     @staticmethod
     def create(db: Session, item: schemas.DeviceCreateOut):
+        """
+        Create a new Device record in the database.
 
+        Args:
+            db (Session): The database session.
+            item (schemas.DeviceCreateOut): The Device data to be created.
+
+        Returns:
+            models.Device: The created Device record.
+        """
         db_item = models.Device()
         # Update model class variable from requested fields
         for var, value in vars(item).items():
@@ -135,7 +233,20 @@ class CRUDDevice:
         api_key: str | None = None,
         edge_server_id: int | None = None,
     ) -> Dict[List[models.Device], int]:
+        """
+        Get a list of Device records from the database based on the provided filters.
 
+        Args:
+            db (Session): The database session.
+            skip (int | None): The number of records to skip.
+            limit (int | None): The maximum number of records to retrieve.
+            node_id (str | None): The node ID to filter by.
+            api_key (str | None): The API key to filter by.
+            edge_server_id (int | None): The edge server ID to filter by.
+        
+        Returns:
+            Dict[List[models.Device], int]: A dictionary containing the list of Device records and the total count.
+        """
         response_get = {"elements": List[models.Device], "count-total": int}
 
         query_result = db.query(models.Device)
@@ -165,6 +276,18 @@ class CRUDDevice:
 
     @staticmethod
     def update(db: Session, item: schemas.DeviceUpdateIn, db_item: models.Device):
+        """
+        Update an existing Device record in the database.
+
+        Args:
+            db (Session): The database session.
+            item (schemas.DeviceUpdateIn): The updated Device data.
+            db_item (models.Device): The Device record to be updated.
+
+        Returns:
+            models.Device: The updated Device record.
+        """
+
         # Update model class variable from requested fields
         for var, value in vars(item).items():
             setattr(db_item, var, value) if value is not None else None
@@ -176,23 +299,53 @@ class CRUDDevice:
 
     @staticmethod
     def delete(db: Session, db_item: models.Device) -> bool:
+        """
+        Delete an existing Device record from the database.
+
+        Args:
+            db (Session): The database session.
+            db_item (models.Device): The Device record to be deleted.
+        """
         db.delete(db_item)
         db.commit()
         return True
 
     @staticmethod
     def count_all(db: Session) -> int:
+        """
+        Count the total number of unique Device records in the database.
+
+        Args:
+            db (Session): The database session.
+        """
         return db.query(models.Device).count()
 
 
 class EdgeServer:
+    """
+    This class provides CRUD operations for the EdgeServer model.
+    """
 
     @staticmethod
     def get_by_id(db: Session, id: int) -> models.EdgeServer:
+        """
+        Get an EdgeServer record from the database based on the provided ID.
+
+        Args:
+            db (Session): The database session.
+            id (int): The ID to filter by.
+        """
         return db.query(models.EdgeServer).filter(models.EdgeServer.id == id).first()
 
     @staticmethod
     def get_by_api_key(db: Session, api_key: str) -> models.EdgeServer:
+        """
+        Get an EdgeServer record from the database based on the provided API key.
+
+        Args:
+            db (Session): The database session.
+            api_key (str): The API key to filter by.
+        """
         return (
             db.query(models.EdgeServer)
             .filter(models.EdgeServer.api_key == api_key)
@@ -201,7 +354,16 @@ class EdgeServer:
 
     @staticmethod
     def create(db: Session, item: schemas.EdgeServerCreateOut):
+        """
+        Create a new EdgeServer record in the database.
 
+        Args:
+            db (Session): The database session.
+            item (schemas.EdgeServerCreateOut): The EdgeServer data to be created.
+
+        Returns:
+            models.EdgeServer: The created EdgeServer record.
+        """
         db_item = models.EdgeServer()
         # Update model class variable from requested fields
         for var, value in vars(item).items():
@@ -224,6 +386,24 @@ class EdgeServer:
         longitude: decimal.Decimal | None = None,
         altitude: decimal.Decimal | None = None,
     ) -> Dict[List[models.EdgeServer], int]:
+        """
+        Get a list of EdgeServer records from the database based on the provided filters.
+
+        Args:
+            db (Session): The database session.
+            skip (int | None): The number of records to skip.
+            limit (int | None): The maximum number of records to retrieve.
+            api_key (str | None): The API key to filter by.
+            name (str | None): The name to filter by.
+            city (str | None): The city to filter by.
+            country (str | None): The country to filter by.
+            latitude (decimal.Decimal | None): The latitude to filter by.
+            longitude (decimal.Decimal | None): The longitude to filter by.
+            altitude (decimal.Decimal | None): The altitude to filter by.
+        
+        Returns:
+            Dict[List[models.EdgeServer], int]: A dictionary containing the list of EdgeServer records and the total count.
+        """
 
         response_get = {"elements": List[models.EdgeServer], "count-total": int}
 
@@ -266,6 +446,17 @@ class EdgeServer:
     def update(
         db: Session, item: schemas.EdgeServerUpdateIn, db_item: models.EdgeServer
     ):
+        """
+        Update an existing EdgeServer record in the database.
+
+        Args:
+            db (Session): The database session.
+            item (schemas.EdgeServerUpdateIn): The updated EdgeServer data.
+            db_item (models.EdgeServer): The EdgeServer record to be updated.
+        
+        Returns:
+            models.EdgeServer: The updated EdgeServer record.
+        """
         # Update model class variable from requested fields
         for var, value in vars(item).items():
             setattr(db_item, var, value) if value is not None else None
@@ -277,6 +468,17 @@ class EdgeServer:
 
     @staticmethod
     def delete(db: Session, db_item: models.EdgeServer) -> bool:
+        """
+        Delete an existing EdgeServer record from the database.
+
+        Args:
+            db (Session): The database session.
+            db_item (models.EdgeServer): The EdgeServer record to be deleted.
+
+        Returns:
+            bool: True if the deletion is successful, False otherwise.
+        """
+
         db.delete(db_item)
         db.commit()
         return True

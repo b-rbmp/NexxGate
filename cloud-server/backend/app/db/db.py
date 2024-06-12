@@ -4,8 +4,13 @@ from config import settings
 
 # Creation of the connection to the Database, gets a session to perform the actions
 
-# Returns the Database URL according to the settings defined in /src/config.py
 def get_db_url():
+    """
+    Returns the database URL based on the configuration settings.
+
+    Returns:
+        str: The database URL.
+    """
     return "{dbservice}://{dbuser}:{dbpass}@{dbhost}/{dbname}".format(
         dbservice=settings.DB_SERVICE,
         dbuser=settings.DB_USER,

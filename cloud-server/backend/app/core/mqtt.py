@@ -8,24 +8,57 @@ from app import models, schemas
 from app.dependencies import get_db_standalone
 from config import settings
 
-# setting callbacks for different events to see if it works, print the message etc.
 def on_connect(client, userdata, flags, rc, properties=None):
+    """
+    Callback function triggered when the client successfully connects to the MQTT broker.
+
+    Parameters:
+        client: The MQTT client instance.
+        userdata: The user data associated with the client.
+        flags: The flags associated with the connection.
+        rc: The connection result code.
+        properties: The properties associated with the connection (optional).
+
+    Returns:
+        None
+    """
     print("CONNACK received with code %s." % rc)
 
 
-# print which topic was subscribed to
 def on_subscribe(client, userdata, mid, granted_qos, properties=None):
+    """
+    Callback function triggered when a subscription is successful.
+
+    Args:
+        client: The MQTT client instance.
+        userdata: The user data associated with the client.
+        mid: The message ID of the subscription.
+        granted_qos: The list of QoS levels granted for the subscription.
+        properties: The optional properties associated with the subscription.
+
+    Returns:
+        None
+    """
     print("Subscribed: " + str(mid) + " " + str(granted_qos))
 
-# print message, useful for checking if it was successful
 def on_message(client, userdata, msg):
+    """
+    Callback function that is called when a message is received.
 
+    Args:
+        client: The MQTT client instance that received the message.
+        userdata: Any user-defined data that was passed to the MQTT client.
+        msg: The received message object.
+
+    Returns:
+        None
+    """
     topic: str = msg.topic
     if topic.startswith("/nexxgate/access"):
         print("Received message: " + str(msg.payload))
         m_decode=str(msg.payload.decode("utf-8","ignore"))
         try:
-            # Received message: b'{"uid": "12345", "node_id": "A5EF1877", "date": "2021-09-01 12:00:00", "result": true. "api_key": "jd99ada"}'
+            # Model Received message: b'{"uid": "12345", "node_id": "A5EF1877", "date": "2021-09-01 12:00:00", "result": true. "api_key": "jd99ada"}'
 
             # Decode the incoming message above instead of the one below
             m_in=json.loads(m_decode) #decode json data
@@ -41,6 +74,7 @@ def on_message(client, userdata, msg):
                 print("No api_key key")
             else:
                 try:
+                    # Get a database connection
                     db: Session = get_db_standalone()
                     
                     # Validate incoming data
@@ -58,8 +92,6 @@ def on_message(client, userdata, msg):
                         print("No edge server found")
                         return
                     
-
-
                     # Log every authentication attempt
                     access_log = schemas.AccessLogCreateIn(
                         device_node_id=data.node_id,
@@ -69,6 +101,7 @@ def on_message(client, userdata, msg):
                         edge_server_id=edge_server.id
                     )
 
+                    # Save the access log
                     access_log = models.AccessLog(**access_log.model_dump())
                     db.add(access_log)
                     db.commit()

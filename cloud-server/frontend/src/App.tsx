@@ -9,11 +9,14 @@ import {
   Routes,
 } from "react-router-dom";
 
-
+// Create a client
 const queryClient = new QueryClient()
 
-
-
+/**
+ * Main component of the application.
+ * 
+ * @returns JSX.Element
+ */
 function App() {
   return (
       <QueryClientProvider client={queryClient}>

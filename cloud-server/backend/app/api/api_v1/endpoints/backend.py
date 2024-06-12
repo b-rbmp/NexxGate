@@ -20,6 +20,16 @@ def get_access_list(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve the access list of authenticated users.
+
+    Parameters:
+    - response: The response object to set headers.
+    - db: The database session.
+
+    Returns:
+    - List[schemas.AccessListResponseItem]: The list of access list response items.
+    """
     # Get all AuthUsers
     auth_users = crud_auth_user.get_list(db=db, skip=0, limit=None, authenticated=True)
 
@@ -40,6 +50,19 @@ def get_access_list(
 # DD/MM/YYYY HH:MM:SS,UID,NodeID,Result
 @router.post("/upload-log/", tags=["backend"], status_code=201)
 async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Uploads access logs from a CSV file to the database.
+
+    Args:
+        file (UploadFile): The CSV file containing the access logs.
+        db (Session): The database session.
+
+    Returns:
+        dict: A dictionary with a success message.
+
+    Raises:
+        HTTPException: If the access log result is invalid or the edge server is not found.
+    """
     content = await file.read()
     content = content.decode("utf-8")
     
@@ -92,6 +115,18 @@ async def upload_log(file: UploadFile = File(...), db: Session = Depends(get_db)
 # Endpoint where devices send a GET /device_heartbeat/{api_key} request to update their last_seen field
 @router.get("/device_heartbeat/{api_key}", tags=["backend"], status_code=200)
 async def device_heartbeat(api_key: str, db: Session = Depends(get_db)):
+    """
+    Endpoint to handle device heartbeat.
+
+    Parameters:
+    - api_key (str): The API key of the device.
+
+    Returns:
+    - dict: A dictionary with a message indicating that the heartbeat was received.
+
+    Raises:
+    - HTTPException: If the device is not found.
+    """
     # Get device
     device = crud_device.get_by_api_key(db=db, api_key=api_key)
 
@@ -107,6 +142,18 @@ async def device_heartbeat(api_key: str, db: Session = Depends(get_db)):
 # Endpoint where Edge Servers send a GET /edge_heartbeat/{api_key} request to update their last_seen field
 @router.get("/edge_heartbeat/{api_key}", tags=["backend"], status_code=200)
 async def edge_heartbeat(api_key: str, db: Session = Depends(get_db)):
+    """
+    Endpoint to handle heartbeat requests from edge servers.
+
+    Parameters:
+    - api_key (str): The API key of the edge server.
+
+    Returns:
+    - dict: A dictionary with a "message" key indicating the success of the heartbeat.
+
+    Raises:
+    - HTTPException: If the edge server is not found.
+    """
     # Get edge server
     edge_server = crud_edge_server.get_by_api_key(db=db, api_key=api_key)
 

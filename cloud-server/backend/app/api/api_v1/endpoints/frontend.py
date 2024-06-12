@@ -12,6 +12,15 @@ router = APIRouter()
 # Function that returns metrics of access logs per hour (how many people entered per hour) on the past 24 hours
 @router.get("/metrics/access-logs/", tags=["metrics"], response_model=List[schemas.AccessLogsMetricsResponseItem])
 async def access_logs_metrics(db: Session = Depends(get_db)):
+    """
+    Retrieve access logs metrics for the past 24 hours.
+
+    Parameters:
+    - db: The database session.
+
+    Returns:
+    - List of AccessLogsMetricsResponseItem: A list of response items containing the hour and the count of people that entered during that hour.
+    """
     # Current time
     current_time = datetime.datetime.now()
     # 24 hours ago
@@ -52,6 +61,15 @@ async def access_logs_metrics(db: Session = Depends(get_db)):
 
 @router.get("/metrics/all-accesses/", tags=["metrics"], response_model=int)
 async def all_accesses(db: Session = Depends(get_db)):
+    """
+    Retrieve the total count of all accesses.
+
+    Parameters:
+    - db: The database session.
+
+    Returns:
+    - int: The total count of all accesses.
+    """
     return crud_access_log.get_list(db=db, skip=0, limit=1000000, start_date=None, end_date=None, granted=True)["total-count"]
 
 
@@ -70,6 +88,27 @@ async def get_access_logs(
     uid: str | None = Query(None, description="UID"),
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve access logs for the frontend.
+
+    This endpoint returns a list of access logs for the frontend application.
+    The logs can be filtered based on various parameters such as offset, limit,
+    device node ID, start date, end date, and UID.
+
+    Parameters:
+    - response: The response object.
+    - skip: The offset value for pagination (default: None).
+    - limit: The limit value for pagination (default: None).
+    - device_node_id: The ID of the device node to filter logs (default: None).
+    - timestamp_start: The start date to filter logs (default: None).
+    - timestamp_end: The end date to filter logs (default: None).
+    - uid: The UID to filter logs (default: None).
+    - db: The database session dependency.
+
+    Returns:
+    - access_logs_for_frontend: A list of access logs for the frontend application.
+
+    """
     access_logs = crud_access_log.get_list(
         db=db,
         skip=skip,

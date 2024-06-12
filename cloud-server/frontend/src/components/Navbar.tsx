@@ -5,12 +5,16 @@ import { RxDashboard } from "react-icons/rx";
 import { RiHistoryFill } from "react-icons/ri";
 import logo from "../images/logo.png";
 
+// Styled components
+
+// Logo
 const Logo = styled.img`
     width: 18vw;
     margin-top: 30px;
     margin-left: 10px;
 `
 
+// Navigation button
 const NavButton = styled("div")<{selected?: boolean}>`
   display: flex;
   color: ${props => props.selected ? "#004aad" : "white"};
@@ -27,11 +31,18 @@ const NavButton = styled("div")<{selected?: boolean}>`
     color: #004aad";
   }
 `
+
+// Button
 const Button = styled.a`
   font-size: 20px;
   margin-left: 10px;
 `
 
+/**
+ * Renders the navigation bar.
+ * 
+ * @returns JSX.Element
+ */
 function Navbar() {
     const location = useLocation();
 

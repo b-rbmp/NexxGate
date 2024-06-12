@@ -3,6 +3,9 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.schema import ForeignKey
 from .db.base_class import Base
 
+# Define the database models
+
+# Edge Server
 class EdgeServer(Base):
     __tablename__ = "edge_server"
 
@@ -20,6 +23,7 @@ class EdgeServer(Base):
     access_logs = relationship("AccessLog", back_populates="edge_server")
 
 
+# Device
 class Device(Base):
     __tablename__ = "device"
     node_id = Column(String(20), primary_key=True, index=True, unique=True)
@@ -30,6 +34,7 @@ class Device(Base):
     logs = relationship("AccessLog", back_populates="device")
     users = relationship("UserAuth", back_populates="last_device")
 
+# Access Log
 class AccessLog(Base):
     __tablename__ = "AccessLog"
 
@@ -47,6 +52,7 @@ class AccessLog(Base):
         PrimaryKeyConstraint('device_node_id', 'timestamp', 'edge_server_id'),
     )
 
+# User Authentication
 class UserAuth(Base):
     __tablename__ = "UserAuth"
 
@@ -57,9 +63,7 @@ class UserAuth(Base):
 
     # UID for NFC
     uid = Column(String(20), index=True)
-    
-    # TODO: Biometric data
-    
+        
     # Last access
     last_access = Column(DateTime, nullable=True)
     

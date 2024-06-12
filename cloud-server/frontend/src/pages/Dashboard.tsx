@@ -24,6 +24,11 @@ import { TAccessLogFrontEnd } from "../fetching/types";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
 
+/**
+ * Renders the dashboard page, displaying statistics and access logs.
+ * 
+ * @returns JSX.Element
+ */
 function Dashboard() {
   const refreshInterval = 1000 * 5; // 5 seconds
 

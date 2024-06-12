@@ -1,3 +1,4 @@
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useQuery } from "@tanstack/react-query";
 import { getAccessLogs } from "../fetching/api";
@@ -17,6 +18,11 @@ import {
   Text
 } from "@chakra-ui/react";
 
+/**
+ * Renders a table displaying the history of access logs.
+ * 
+ * @returns JSX.Element
+ */
 function History() {
   const [pageIndex, setPageIndex] = useState(0);
   const pageSize = 10;

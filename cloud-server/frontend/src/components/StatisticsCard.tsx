@@ -1,6 +1,12 @@
 import { Box, Text } from "@chakra-ui/react";
 
-
+/**
+ * Renders a statistics card.
+ * 
+ * @param label - The label of the card.
+ * @param count - The count of the card.
+ * @returns JSX.Element
+ */
 function StatisticsCard({ label, count }: { label: string, count: number }) {
     return (
       <Box

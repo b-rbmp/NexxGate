@@ -18,9 +18,6 @@ class SettingsBase(BaseSettings):
     DESCRIPTION: str = "NexxGate API Service."
     VERSION: str = "0.0.1"
 
-    # Permissão Super Admin que da acesso a todas os modulos do sistema:
-    SUPER_USER_PERMISSION: str = "superuser"
-
     class Config:
         env_file = "../.env"
         env_file_encoding = "utf-8"

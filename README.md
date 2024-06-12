@@ -1,7 +1,6 @@
 # NexxGate
 Next-generation gateway for secure access
 
-
 ## Team
 
 | **Name / Surname** | **Linkedin** | **GitHub** |

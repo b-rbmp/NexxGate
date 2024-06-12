@@ -22,6 +22,21 @@ def get_devices(
     edge_server_id: int | None = Query(None, description="Edge Server ID"),
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve a list of devices based on the provided filters.
+
+    Parameters:
+    - response: The response object.
+    - skip: The offset value for pagination (default: None).
+    - limit: The limit value for pagination (default: None).
+    - node_id: The ID of the node to filter devices (default: None).
+    - api_key: The API key to filter devices (default: None).
+    - edge_server_id: The ID of the edge server to filter devices (default: None).
+    - db: The database session dependency.
+
+    Returns:
+    - A list of devices matching the provided filters.
+    """
     devices = crud_device.get_list(
         db=db,
         skip=skip,
@@ -41,6 +56,19 @@ def create_device(
     device: schemas.DeviceCreateIn,
     db: Session = Depends(get_db),
 ):
+    """
+    Create a new device.
+
+    Args:
+        device (schemas.DeviceCreateIn): The device information to be created.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Raises:
+        HTTPException: If a device with the same node_id or api_key already exists.
+
+    Returns:
+        schemas.DeviceInDBBase: The created device information.
+    """
     db_device = crud_device.get_by_node_id(db=db, node_id=device.node_id)
     if db_device is not None:
         raise HTTPException(
@@ -64,6 +92,19 @@ def get_device_by_node_id(
     node_id: int,
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve a device by its node ID.
+
+    Args:
+        node_id (int): The node ID of the device to retrieve.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        schemas.DeviceInDBBase: The device information.
+
+    Raises:
+        HTTPException: If the node ID is not found in the database.
+    """
     db_device = crud_device.get_by_node_id(db=db, node_id=node_id)
     if db_device is None:
         raise HTTPException(status_code=404, detail="Node ID not found")
@@ -78,6 +119,20 @@ def update_device(
     device: schemas.DeviceUpdateIn,
     db: Session = Depends(get_db),
 ):
+    """
+    Update a device with the specified node ID.
+
+    Args:
+        node_id (int): The ID of the device to update.
+        device (schemas.DeviceUpdateIn): The updated device information.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        schemas.DeviceInDBBase: The updated device information.
+
+    Raises:
+        HTTPException: If the specified node ID is not found in the database.
+    """
     db_device = crud_device.get_by_node_id(db=db, node_id=node_id)
     if db_device is None:
         raise HTTPException(status_code=404, detail="Node ID not found")
@@ -91,6 +146,19 @@ def delete(
     node_id: int,
     db: Session = Depends(get_db),
 ):
+    """
+    Delete a device by its node ID.
+
+    Args:
+        node_id (int): The node ID of the device to be deleted.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        bool: True if the device is successfully deleted, False otherwise.
+
+    Raises:
+        HTTPException: If the node ID is not found in the database.
+    """
     db_device = crud_device.get_by_node_id(db=db, node_id=node_id)
     if db_device is None:
         raise HTTPException(status_code=404, detail="Node ID not found")
@@ -116,6 +184,22 @@ def get_edge_servers(
     country: str | None = Query(None, description="Country"),
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve a list of edge servers based on the provided filters.
+
+    Parameters:
+    - response: The response object.
+    - skip: The offset value for pagination (default: None).
+    - limit: The limit value for pagination (default: None).
+    - api_key: The API key for authentication (default: None).
+    - name: The name of the edge server (default: None).
+    - city: The city where the edge server is located (default: None).
+    - country: The country where the edge server is located (default: None).
+    - db: The database session.
+
+    Returns:
+    - A list of edge servers matching the provided filters.
+    """
     edge_servers = crud_edge_server.get_list(
         db=db,
         skip=skip,
@@ -138,6 +222,19 @@ def create_edge_server(
     edge_server: schemas.EdgeServerCreateIn,
     db: Session = Depends(get_db),
 ):
+    """
+    Create a new edge server.
+
+    Args:
+        edge_server (schemas.EdgeServerCreateIn): The data for the new edge server.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        schemas.EdgeServerInDBBase: The created edge server.
+
+    Raises:
+        HTTPException: If an edge server with the same api_key already exists.
+    """
     db_edge_server = crud_edge_server.get_by_api_key(db=db, api_key=edge_server.api_key)
     if db_edge_server is not None:
         raise HTTPException(
@@ -158,6 +255,19 @@ def get_edge_server_by_id(
     id: int,
     db: Session = Depends(get_db),
 ):
+    """
+    Retrieve an edge server by its ID.
+
+    Args:
+        id (int): The ID of the edge server to retrieve.
+        db (Session, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        schemas.EdgeServerInDBBase: The edge server information.
+
+    Raises:
+        HTTPException: If the ID is not found in the database.
+    """
     db_edge_server = crud_edge_server.get_by_id(db=db, id=id)
     if db_edge_server is None:
         raise HTTPException(status_code=404, detail="ID not found")
