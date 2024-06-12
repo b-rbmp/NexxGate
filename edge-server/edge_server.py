@@ -450,7 +450,6 @@ def process_authentication(data: AuthenticateData):
             client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
             print(f"Access Denied to {uid} at {node_id} on {date}")
 
-
     # Log every authentication attempt
     new_data = AuthenticateData(uid=uid, node_id=node_id, date=date, result=new_result)
     write_access_to_file(new_data)

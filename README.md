@@ -15,11 +15,10 @@ Next-generation gateway for secure keyless access, leveraging NFC and ESP32
 + [Architecture](#architecture)
 + [Backend](#backend)
 + [Frontend](#frontend)
++ [Edge Server](#edge-server)
 + [ESP32 Project](#esp32-project)
 + [Measurements](#measurements)
 + [Demo](#demo)
-+ [Installation](#installation)
-
 
 ## About <a name = "about"></a>
 NexxGate is an innovative access control solution designed to enhance security and flexibility across various environments. Leveraging the power of NFC (Near Field Communication) technology and the robust ESP32 microcontroller, NexxGate enables secure, keyless entry to buildings, rooms, and other secure areas. This project combines the convenience of NFC tags/cards with MQTT communication, also implementing a web interface for user management and access control. NexxGate is a versatile solution that can be easily adapted to different scenarios, such as homes, offices, metro stations, and industrial facilities.
@@ -64,6 +63,8 @@ And also address the following challenges and problems that are common in tradit
 The NexxGate project consists of three main components: the Cloud Server, the Edge Server and the ESP32 Node. The Cloud Server is responsible for managing users, access lists, and logs, being composed of a backend server and a frontend web interface. The Backend Server is implemented using FastAPI (Python), while the Frontend is implemented using React (JavaScript). The Data is stored in a PostgreSQL database, and the communication between the Cloud Server and the Edge Servers is done using MQTT with TLS encryption and also HTTPS.
 
 The Edge Server is responsible for managing the access control devices (ESP32 Nodes) in a local network, ensuring that the devices can operate autonomously even when the Cloud Server is offline. The Edge Server is implemented using Python, and multiples Edge Servers can be deployed in the same Edge Network to provide redundancy and fault tolerance. Edge Servers can cooperate with each other to define the access list and ensure that the devices can authenticate users even when the Cloud Server is down. It also implements a unique key lockout mechanism to prevent unauthorized access through cloned NFC tags and provides a SHA-256 digital signature to allow the ESP32 nodes to verify the authenticity and integrity of the cached UID list.
+
+For every local edge network, a mosquitto MQTT broker is deployed to handle the communication between the Edge Servers and the ESP32 Nodes. The Edge Servers communicate with the Cloud Server using a cloud MQTT broker, which is responsible for handling the communication between the Cloud Server and the Edge Servers, which was deployed using HiveMQ Cloud.
 
 The ESP32 Node is the access control device that interacts with the NFC tags/cards and communicates with the Edge Server to authenticate users. The ESP32 Node is implemented using ESP-IDF (C), and it uses the ESP32's NFC capabilities to read the NFC tags/cards. The ESP32 Node stores a rolling list of recent and frequent user credentials, ensuring that it can authenticate known users even when the Edge Server is offline. The ESP32 Node also implements an energy-saving mode to reduce energy consumption during idle times. The communication between the ESP32 Node and the Edge Server is done using MQTT with TLS encryption. It has a signature verification mechanism to ensure the authenticity and integrity of the cached UID list by using the public key of the Edge Server to verify the signature sent along with the Access List. For the Prototype, the ESP32 Node is connected to a relay module and a Solenoid Lock to simulate the door lock mechanism.
 
@@ -128,6 +129,19 @@ The frontend web interface is implemented using React, a popular JavaScript libr
 A screenshot of the frontend web interface is shown below:
 
 ![Frontend Interface](/docs/images/frontend/dashboard.png "Frontend Interface")
+
+### Edge Server <a name = "edge-server"></a>
+
+The Edge Server is responsible for managing the access control devices (ESP32 Nodes) in a local network, ensuring that the devices can operate autonomously even when the Cloud Server is offline. It is also responsible for getting periodic updates for the access list from the Cloud Server and propagating the changes to the ESP32 Nodes in the local network.
+
+The Edge Server listens to the /Authenticate topic under the local MQTT broker for access requests from the ESP32 Nodes, which can be either a UID that is not found in the local access list or a UID that is found in the local access list in the Node and has been already authenticated. In case the UID has not been authenticated by the node, the Edge Server checks the UID against the full access list and sends a response back to the ESP32 Node under the /Allow_Authentication topic. In both cases, the Edge Server updates the local access logs and sends the authentication information to the cloud using the /nexxgate/access topic using the cloud MQTT broker. It also registers the UID in the lockout dictionary with the last timestamp it and node it was scanned, and if a new access request for the same UID comes in within a defined lockout period (10 seconds) from a different node, the edge server will flag the UID and block it, propagating the changes to other nodes in the local network using the /Remove_UID topic.
+
+It also listens to the /Request_Access_List topic under the local MQTT broker for requests from the ESP32 Nodes for the updated access list, and sends the updated list to the ESP32 Node under the /Response_Access_List topic. While sending the access list to the ESP32 Node, the Edge Server signs the data with its private key before sending it to the ESP32 Node, and the devices use the server's public key to verify the signature, ensuring that it has not been compromised, before updating the list.
+
+The Edge Server has periodic communication with the Cloud Server, where it sends the local access logs to the Cloud Server using a HTTPS POST request to the /upload-log/ endpoint in the backend server, and obtains the updated access list using a HTTPS GET request to the /access_list/ endpoint in the backend server. 
+
+In case the Cloud Server is not reachable, the Edge Server also communicates with other Edge Servers in the same Edge Network in cooperation to generate a consensus on the access list, where a node starts a majority vote process to determine the access list by sending a message to the /majority_vote topic, and the other nodes respond with their access list under the /vote_response topic, and the access list with the most votes is then used by the node.
+
 
 ### ESP32 Project <a name = "esp32-project"></a>
 
@@ -218,9 +232,4 @@ The following measurements were obtained during the testing of the NexxGate proj
 The NexxGate Dashboard is available at the following link: [NexxGate Dashboard](http://nexxgate.s3-website-us-east-1.amazonaws.com)
 
 The Swagger Interface with the API Documentation is available at the following link: [NexxGate API Documentation](https://nexxgate-backend.onrender.com/nexxgate/api/v1/docs)
-
-## Installation <a name = "installation"></a>
-
-
-
 
