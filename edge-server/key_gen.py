@@ -1,3 +1,5 @@
+# This script generates a private and public key pair for the edge server.
+
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 

@@ -23,11 +23,16 @@
 #include "driver/uart.h"
 #include "certs.c" // Include the certificates, won't be included in the repository to avoid leaking the certificates
 
-static bool waiting_edge_response = false;
-static bool waiting_edge_response_access_list = false;
-static bool result_edge_response = false;
-static bool authenticating = false;
-static bool powersavings_active = false;
+// Edge Server Communication flags and Variables
+static bool waiting_edge_response = false; // Boolean to check if waiting for edge response
+static bool waiting_edge_response_access_list = false; // Boolean to check if waiting for edge response for access list
+static bool result_edge_response = false; // Boolean to store the result of the edge response
+static bool authenticating = false; // Boolean to check if the device is currently authenticating
+static char waiting_uid[11]; // UID that is currently being authenticated
+
+// Power Saving flags and Variables
+static bool powersavings_active = false; // Boolean to check if power saving mode is active
+TimerHandle_t powerSavingIdleTimer; // Timer for the power saving idle time
 
 // Device Majorty Vote for Access List
 static bool device_majority_vote = false; // Boolean to check if device voting is underway
@@ -35,14 +40,16 @@ static char majority_vote_uid_list[MAX_DEVICES_PARTICIPATING_MAJ_VOTE][MAX_UIDS]
 static int majority_vote_count = 0; // Counter for the number of devices participating in the majority voting procedure
 // ----------------------------
 
-static char waiting_uid[11];
-spi_device_handle_t spi; // Handle for the SPI device
+// Handle for the SPI device
+spi_device_handle_t spi;
 
+// Handle for the RC522 library
 static rc522_handle_t scanner;
 
-TimerHandle_t powerSavingIdleTimer;
 
-
+/**
+ * Turns off all the LEDs.
+ */
 void off_leds()
 {
     gpio_set_level(LED_BLUE, 0);
@@ -50,7 +57,9 @@ void off_leds()
     gpio_set_level(LED_YELLOW, 0);
 }
 
-// Function to set up GPIO pins for LEDs as output
+/**
+ * @brief Function to initialize GPIO pins for LEDs as output.
+ */
 void init_leds()
 {
     esp_rom_gpio_pad_select_gpio(LED_BLUE);
@@ -65,7 +74,12 @@ void init_leds()
     ESP_LOGI(CONFIG_TAG, "LEDs initialized.\n");
 }
 
-// Function to set up GPIO pin for Relay Control as output
+/**
+ * @brief Function to set up GPIO pin for Relay Control as output
+ * 
+ * This function initializes the GPIO pin used for controlling the relay as an output pin.
+ * It also sets the initial level of the pin to turn off the relay..
+ */
 void init_relay()
 {
     esp_rom_gpio_pad_select_gpio(RELAY_CONTROL);
@@ -74,6 +88,17 @@ void init_relay()
     ESP_LOGI(CONFIG_TAG, "Relay initialized.\n");
 }
 
+/**
+ * @brief Sets up authentication data.
+ *
+ * This function sets up authentication data by populating the provided AuthenticateMessage structure
+ * with the given user ID, node ID, result, and current time.
+ *
+ * @param uid The user ID to be set in the authentication data.
+ * @param node_id The node ID to be set in the authentication data.
+ * @param result The result to be set in the authentication data.
+ * @param auth_data Pointer to the AuthenticateMessage structure to be populated.
+ */
 void setup_auth_data(const char *uid, const char *node_id, bool result, AuthenticateMessage *auth_data)
 {
     char current_time[20];
@@ -91,7 +116,15 @@ void setup_auth_data(const char *uid, const char *node_id, bool result, Authenti
     auth_data->result = result;
 }
 
-// Helper function to compare two lists of UIDs
+/**
+ * Helper function to compare two lists of UIDs.
+ * 
+ * This function compares two lists of UIDs and checks if they are equal.
+ * 
+ * @param list1 The first list of UIDs to compare.
+ * @param list2 The second list of UIDs to compare.
+ * @return 1 if the lists are equal, 0 otherwise.
+ */
 int compare_uid_lists(char list1[MAX_UIDS][UID_LENGTH], char list2[MAX_UIDS][UID_LENGTH]) {
     for (int i = 0; i < MAX_UIDS; i++) {
         if (strcmp(list1[i], list2[i]) != 0) {
@@ -101,7 +134,16 @@ int compare_uid_lists(char list1[MAX_UIDS][UID_LENGTH], char list2[MAX_UIDS][UID
     return 1; // Lists are equal
 }
 
-// Function to count votes for a particular UID list
+/**
+ * Counts the number of votes for a particular UID list.
+ *
+ * This function iterates through the given UID list and compares it with the majority vote UID list.
+ * If a match is found, it increments the vote count.
+ *
+ * @param uid_list The UID list to count votes for.
+ * @param device_count The number of devices in the majority vote UID list.
+ * @return The number of votes for the given UID list.
+ */
 int count_votes_for_list(char uid_list[MAX_UIDS][UID_LENGTH], int device_count) {
     int votes = 0;
     for (int i = 0; i < device_count; i++) {
@@ -112,10 +154,14 @@ int count_votes_for_list(char uid_list[MAX_UIDS][UID_LENGTH], int device_count) 
     return votes;
 }
 
-// Function that concludes the majority voting procedure by checking the majority vote UID list and updating the access list, by comparing
-// the array of UIDs for the 5 devices participating + the own device UID listin the majority voting procedure and updating the access list 
-// with the list of UIDs that was voted for by the majority of the devices, by comparing if the lists are equal. If no majority is reached, 
-// the access list is not updated.
+/**
+ * @brief Concludes the majority voting procedure and updates the access list.
+ *
+ * This function concludes the majority voting procedure by checking the majority vote UID list and updating the access list. 
+ * It compares the array of UIDs for the 5 devices participating, including the own device UID list, in the majority voting procedure 
+ * and updates the access list with the list of UIDs that was voted for by the majority of the devices. If no majority is reached, 
+ * the access list is not updated.
+ */
 void conclude_majority_voting() {
     int total_devices = majority_vote_count + 1; // Including the device itself
     int majority_threshold = total_devices / 2 + 1;
@@ -170,7 +216,10 @@ void conclude_majority_voting() {
 }
 
 
-// Task that starts a majority voting procedure for the access list with this node_id by publishing at /device_majority_vote with the nodeId as the payload
+/**
+ * @brief Task that starts a majority voting procedure for the access list with this node_id.
+ *        It publishes the node_id as the payload at /device_majority_vote topic.
+ */
 static void majority_voting_task(void *pvParameters)
 {
     if (!device_majority_vote) {
@@ -221,7 +270,16 @@ static void majority_voting_task(void *pvParameters)
 
 
 
-// Function that authenticates the user
+/**
+ * @brief Function that authenticates the user using NFC.
+ *
+ * This function authenticates the user by checking the UID received from the NFC tag.
+ * It publishes the authentication data to the MQTT broker if the UID is recognized for logging purposes.
+ * If the UID is not recognized, it also publishes the authentication data to check with the Edge Server for authentication.
+ * The function also controls LEDs to indicate the authentication status.
+ *
+ * @param uid The UID of the NFC tag.
+ */
 void authenticate_NFC(char *uid)
 {
     if (!authenticating)
@@ -680,6 +738,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+/**
+ * @brief Sends a heartbeat to the cloud server using HTTP GET request.
+ * 
+ * This function initializes an HTTP client with the provided configuration and sends
+ * an HTTP GET request to the server. It logs the status code and content length of the
+ * response.
+ * 
+ * @param config The configuration for the HTTP client.
+ */
 static void heartbeat_cloud(esp_http_client_config_t config)
 {
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -700,6 +767,13 @@ static void heartbeat_cloud(esp_http_client_config_t config)
     esp_http_client_cleanup(client);
 }
 
+/**
+ * @brief Starts the MQTT client and initializes its configuration.
+ * 
+ * This function initializes the MQTT client with the provided configuration and starts it.
+ * It sets up the MQTT broker address, verification certificate, client authentication credentials,
+ * and network timeout. It also registers the event handler for MQTT events.
+ */
 void mqtt_app_start(void)
 {
     const esp_mqtt_client_config_t mqtt_cfg = {
@@ -720,6 +794,12 @@ void mqtt_app_start(void)
     esp_mqtt_client_start(client);
 }
 
+/**
+ * @brief Function to wake up from power savings and restart Wi-Fi and MQTT connections.
+ * 
+ * This function wakes up from power savings mode, restarts the Wi-Fi connection, and establishes the MQTT connection.
+ * It also flashes the yellow LED to indicate waking up from power savings and the blue LED to indicate the MQTT connection being established.
+ */
 static void wake_up_from_power_savings()
 {
     powersavings_active = false;
@@ -753,9 +833,19 @@ static void wake_up_from_power_savings()
     gpio_set_level(LED_BLUE, 0);
 
     ESP_LOGI(POWER_SAVING_TAG,"MQTT RESTARTED\n");
-
 }
 
+/**
+ * @brief Handler function for RC522 events.
+ *
+ * This function is called when an RC522 event occurs. It handles the RC522_EVENT_TAG_SCANNED event,
+ * which is triggered when a tag is scanned by the RC522 module.
+ *
+ * @param arg Pointer to user-defined data.
+ * @param base Event base.
+ * @param event_id Event ID.
+ * @param event_data Pointer to the event data.
+ */
 static void rc522_handler(void *arg, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     rc522_event_data_t *data = (rc522_event_data_t *)event_data;
@@ -796,6 +886,15 @@ static void rc522_handler(void *arg, esp_event_base_t base, int32_t event_id, vo
     }
 }
 
+/**
+ * @brief Task that enters light sleep mode and wakes up periodically.
+ *
+ * This task is responsible for entering light sleep mode and waking up periodically
+ * based on the configured sleep wake interval and duty cycle. It disables WIFI and MQTT
+ * before entering sleep mode and re-enables them after waking up.
+ *
+ * @param pvParameters Pointer to task parameters (not used in this task).
+ */
 static void light_sleep_task(void *pvParameters)
 {
     powersavings_active = true;
@@ -833,17 +932,32 @@ static void light_sleep_task(void *pvParameters)
         {
             break;
         }      
-
-         
     }
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Enters light sleep mode.
+ */
 void enter_light_sleep()
 {
     xTaskCreate(light_sleep_task, "light_sleep_task", 2048, NULL, 5, NULL);
 }
 
+/**
+ * @brief Obtains the access list from the server or NVS and starts the majority voting task.
+ * 
+ * This function checks if the MQTT connection is established. If it is, it sends a request to the server
+ * for the access list and waits for a response. During the waiting period, the yellow LED flashes to indicate
+ * that a response is being waited for. If no response is received within 5 seconds, the function falls back
+ * to using the access list stored in the NVS (Non-Volatile Storage).
+ * 
+ * If the MQTT connection is not established, the function directly uses the access list stored in the NVS.
+ * 
+ * After obtaining the access list, the function loads the UIDs from the NVS and starts the majority voting task in
+ * cooperation with other devices in the same edge network.
+ * 
+ */
 void obtain_access_list() {
     bool use_nvs = false;
     if (mqtt_connected) {
@@ -890,6 +1004,7 @@ void obtain_access_list() {
 // Main application function
 void app_main()
 {
+    // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -912,8 +1027,9 @@ void app_main()
 
     obtain_access_list(); // Request the access list from the edge server
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS); //
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
+    // Initialize the RC522 module
     rc522_config_t config = {
         .spi.host = SPI3_HOST,
         .spi.miso_gpio = PIN_NUM_MISO,
@@ -928,6 +1044,7 @@ void app_main()
     // Wait 5s for the RC522 to start up
     rc522_start(scanner);
 
+    // Initialize the power saving timer if power saving mode is enabled
     if (POWER_SAVINGS_MODE)
     {
         // Create a timer to enter light sleep after the initial idle period
@@ -935,13 +1052,13 @@ void app_main()
         xTimerStart(powerSavingIdleTimer, 0);
     }
 
-
     // HTTP Heartbeat
     char local_response_buffer[256] = {0};
     // Endpoint is HEARTBEAT_LINK + API_KEY.
     char http_heartbeat_endpoint[100];
     sprintf(http_heartbeat_endpoint, "%s%s", HEARTBEAT_LINK, API_KEY);
 
+    // Configure the HTTP client
     esp_http_client_config_t esp_http_config = {
         .url = http_heartbeat_endpoint,
         .event_handler = _http_event_handler,
@@ -952,10 +1069,9 @@ void app_main()
     // Periodically send heartbeat to the cloud
     while (1)
     {
-        heartbeat_cloud(esp_http_config);
+        //heartbeat_cloud(esp_http_config);
         // Delay for 30 minutes (1800 seconds)
         vTaskDelay(30 * 60 * 60 / portTICK_PERIOD_MS);
     }
 
-    print_memory_info("app_main");
 }

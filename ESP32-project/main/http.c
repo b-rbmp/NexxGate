@@ -4,9 +4,13 @@
 #include <sys/param.h>
 #include "config.h"
 
+// HTTP buffers
 #define MAX_HTTP_RECV_BUFFER 512
 #define MAX_HTTP_OUTPUT_BUFFER 256
 
+/**
+ * @brief Event handler for HTTP client events.
+ */
 esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 {
     static char *output_buffer;  // Buffer to store response of http request from event handler

@@ -15,7 +15,11 @@ int head = 0; // Head index for the circular buffer
 int tail = 0; // Tail index for the circular buffer
 int uid_count = 0; // Current count of stored UIDs
 
-// Function to add a UID to the circular buffer
+/**
+ * Adds a UID to the circular buffer.
+ *
+ * @param uid The UID to be added.
+ */
 void add_uid(const char* uid) {
     if (uid_count >= MAX_UIDS) {
         // Buffer is full, remove the oldest UID
@@ -28,7 +32,11 @@ void add_uid(const char* uid) {
     uid_count++;
 }
 
-// Function to remove an UID from the circular buffer if it is present
+/**
+ * Removes a UID from the circular buffer if it is present.
+ *
+ * @param uid The UID to be removed.
+ */
 void remove_uid(const char* uid) {
     int index = head;
     for (int i = 0; i < uid_count; i++) {
@@ -44,8 +52,12 @@ void remove_uid(const char* uid) {
         index = (index + 1) % MAX_UIDS;
     }
 }
-
-// Update the access list with a new list of encrypted UIDs by replacing the old list
+/**
+ * Update the access list with a new list of encrypted UIDs by replacing the old list.
+ * 
+ * @param uids An array of encrypted UIDs.
+ * @param count The number of UIDs in the array.
+ */
 void update_access_list(const char* uids[], int count) {
     head = 0;
     tail = 0;
@@ -56,7 +68,12 @@ void update_access_list(const char* uids[], int count) {
     }
 }
 
-// Function to check if a UID is valid
+/**
+ * Checks if a UID is valid.
+ *
+ * @param uid The UID to check.
+ * @return 1 if the UID is found in the valid UIDs list, 0 otherwise.
+ */
 int is_valid_uid(const char* uid) {
     int index = head;
     for (int i = 0; i < uid_count; i++) {
@@ -82,6 +99,9 @@ int is_valid_uid(const char* uid) {
 
 // Total available space​=16384/42=390 UIDs
 
+/**
+ * Saves the UIDs to the NVS (Non-Volatile Storage).
+ */
 void save_uids_to_nvs() {
     esp_err_t err;
 
@@ -126,7 +146,14 @@ void save_uids_to_nvs() {
     ESP_LOGI(NVS_TAG, "UIDs saved to NVS successfully.");
 }
 
-// Function to load UIDs from NVS 
+/**
+ * @brief Function to load UIDs from NVS
+ * 
+ * This function retrieves UIDs from the NVS (Non-Volatile Storage) and stores them in an array.
+ * It opens the NVS handle, retrieves the UID count, and then loads each UID from the NVS.
+ * The UIDs are stored in the `valid_uids` array.
+ * 
+ */
 void load_uids_from_nvs() {
     esp_err_t err;
 
@@ -172,6 +199,13 @@ void load_uids_from_nvs() {
     ESP_LOGI(NVS_TAG, "UIDs loaded from NVS successfully.");
 }
 
+/**
+ * Verifies the signature of the given data using a public key.
+ *
+ * @param data The data to be verified.
+ * @param signature_base64 The base64 encoded signature to be verified.
+ * @return 0 if the signature is valid, -1 otherwise.
+ */
 int verify_signature(const char *data, const char *signature_base64) {
     unsigned char signature[256];
     size_t sig_len;

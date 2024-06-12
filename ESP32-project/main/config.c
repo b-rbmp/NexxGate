@@ -3,14 +3,21 @@
 #include "esp_sntp.h"
 #include "esp_log.h"
 
+// WIFI credentials
 const char *ssid = "WIFI-SPAZIO-IMPERO";
 const char *pass = "SpazioImpero";
+
+// MQTT address
 const char *mqtt_address = "mqtts://172.27.73.117:8883";
 
+// Config Log Tag
 #define CONFIG_TAG "CONFIG"
 
 int retry_num = 0;
 
+/**
+ * @brief Event handler for WiFi events.
+ */
 static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     if (event_id == WIFI_EVENT_STA_START)
@@ -37,15 +44,28 @@ static void wifi_event_handler(void *event_handler_arg, esp_event_base_t event_b
     }
 }
 
+/**
+ * @brief Configures and connects to a Wi-Fi network.
+ *
+ * This function performs the following steps:
+ * 1. Initializes the network interface.
+ * 2. Creates the event loop and sets up the Wi-Fi station.
+ * 3. Initializes the Wi-Fi module with default settings.
+ * 4. Registers event handlers for Wi-Fi and IP events.
+ * 5. Sets the Wi-Fi configuration with the provided SSID and password.
+ * 6. Starts the Wi-Fi module in station mode.
+ * 7. Connects to the Wi-Fi network.
+ *
+ * @param None
+ * @return None
+ */
 void wifi_connection()
 {
-    //                          s1.4
-    // 2 - Wi-Fi Configuration Phase
     esp_netif_init();
-    esp_event_loop_create_default();     // event loop                    s1.2
-    esp_netif_create_default_wifi_sta(); // WiFi station                      s1.3
+    esp_event_loop_create_default();
+    esp_netif_create_default_wifi_sta();
     wifi_init_config_t wifi_initiation = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&wifi_initiation); //
+    esp_wifi_init(&wifi_initiation);
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL);
     wifi_config_t wifi_configuration = {
@@ -58,7 +78,6 @@ void wifi_connection()
     };
     strcpy((char *)wifi_configuration.sta.ssid, ssid);
     strcpy((char *)wifi_configuration.sta.password, pass);
-    // esp_log_write(ESP_LOG_INFO, "Kconfig", "SSID=%s, PASS=%s", ssid, pass);
     esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_configuration);
     // 3 - Wi-Fi Start Phase
     esp_wifi_start();
@@ -68,14 +87,26 @@ void wifi_connection()
     ESP_LOGI(CONFIG_TAG, "wifi_init_softap finished. SSID:%s  password:%s", ssid, pass);
 }
 
-
+/**
+ * @brief Initializes the Simple Network Time Protocol (SNTP) client.
+ * 
+ * This function sets the operating mode of the SNTP client to poll mode and
+ * configures the server name to "pool.ntp.org" using the NTP pool project server.
+ * It then initializes the SNTP client.
+ */
 void initialize_sntp(void) {
-    // Update deprecated function names to the new ones
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org"); // Using the NTP pool project server
     esp_sntp_init();
 }
 
+/**
+ * @brief Obtains the current system time.
+ * 
+ * This function initializes the Simple Network Time Protocol (SNTP) and waits for the system time to be set.
+ * It retries a maximum of 10 times, with a delay of 2 seconds between each retry, until the time is set or the maximum retry count is reached.
+ * 
+ */
 void obtain_time(void) {
     initialize_sntp();
 
@@ -92,6 +123,16 @@ void obtain_time(void) {
     }
 }
 
+/**
+ * @brief Generates the current time in ISO8601 format without timezone information.
+ * 
+ * This function takes a buffer and its length as input parameters. It retrieves the current time
+ * and formats it in ISO8601 format ("%Y-%m-%d %H:%M:%S") without timezone information. The formatted
+ * time string is then stored in the provided buffer.
+ * 
+ * @param buf Pointer to the buffer where the formatted time string will be stored.
+ * @param buf_len The length of the buffer.
+ */
 void get_iso8601_time(char *buf, size_t buf_len) {
     time_t now;
     struct tm timeinfo;

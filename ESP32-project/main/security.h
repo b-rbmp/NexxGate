@@ -1,5 +1,7 @@
 #define MAX_UIDS 100  // Maximum number of UIDs we can store
 #define UID_LENGTH 10 // Assuming UID length to be 10 characters
+
+// Public key used for verifying the signature
 #define PUBLIC_KEY_EDGE "-----BEGIN PUBLIC KEY-----\n" \
 "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0iag2Z7BkrUrZQh0ZglG\n" \
 "nW5Uhq3JhTtfXDHLqCgAncGraGhQBEKEYADXQdC1iFtVh9Qe73VhDsdvNXYNytqi\n" \

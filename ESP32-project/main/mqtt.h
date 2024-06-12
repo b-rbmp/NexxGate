@@ -9,6 +9,7 @@ typedef struct {
     bool result;        // Result as boolean
 } AuthenticateMessage;
 
+// A struct used for passing the JSON message to the /Authenticated topic
 typedef struct {
     char uid[11];       // UID with space for null-terminator
     char node_id[11];   // Node ID, assuming similar size as UID

@@ -5,7 +5,7 @@
 + [Live Demo](#demo)
 
 ## About <a name = "about"></a>
-Backend implementation of NexxGate, implemented in Python using FastAPI.
+Backend implementation of NexxGate, implemented in Python using FastAPI. The Database is implemented using PostgreSQL
 
 Running the server on Ubuntu:
 ```bash
@@ -17,7 +17,10 @@ Running the server on Ubuntu:
 ```
 
 ## Live Demo <a name = "demo"></a>
-The backend is hosted on a EC2 node in Amazon AWS, and can be accessed at [Backend Swagger Docs](
-http://54.235.119.167:8000/nexxgate/api/v1/docs)
+
+The backend API is currently being hosted on Render, since AWS Academy shuts down the EC2 instances after a period of inactivity, and can be accessed at [Backend Swagger Docs](
+https://nexxgate-backend.onrender.com/nexxgate/api/v1/docs)
+
+The Database is hosted on AWS RDS with PostgreSQL.
 
 ![alt text](../../docs/images/backend/swagger.png "Swagger Docs")

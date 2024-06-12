@@ -2,8 +2,7 @@ import axios from "axios";
 import { TAccessLogFrontEnd, TAccessLogMetricsItem } from "./types";
 
 // URL of the API (backend)
-const API_URL = "http://54.235.119.167:8000/nexxgate/api/v1/";
-
+const API_URL = "https://nexxgate-backend.onrender.com/nexxgate/api/v1/";
 
 /**
  * Retrieves access log metrics from the server.
