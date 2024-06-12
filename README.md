@@ -98,14 +98,14 @@ Listed below are each of the solutions implemented in the NexxGate project, for 
 
             A diagram showing the Digital Signature Verification mechanism is shown below:
 
-            ![Signature System](/docs/images/architecture/device_reliability.png "Signature System")
+            ![Signature System](/docs/images/architecture/signature_system.png "Signature System")
 
     - **NFC UID cloning**: Unauthorized users may clone NFC tags to gain unauthorized access, and use this method for a coordinated attack to gain access through multiple nodes at the same time.
         - **Solution**: Implemented a Time-Based Unique Key Lockout Mechanism with a Counter on the Edge Server level, where when an UID is scanned, the device sends an Access request with a timestamp and the edge maintains a counter for each timestamp and checking the timestamp for each UID recently scanned with the previous timestamp it was scanned anywhere in the local network. If a new access request for the same UID comes in within a defined lockout period (10  seconds) from a different node, the edge server will flag the UID and block it, propagating the changes to other nodes in the local network
 
             A diagram showing the Unique Key Lockout Mechanism is shown below:
 
-            ![Unique Key Lockout](/docs/images/architecture/signature_system.png "Unique Key Lockout")
+            ![Unique Key Lockout](/docs/images/architecture/lockout.png "Unique Key Lockout")
 
 3. **Energy Consumption during idle times**: The system should consume minimal energy when idle to reduce costs and environmental impact, example: Running during off-hours.
     - **Solution**: Implemented a Energy Savings Mode, where if 30 minutes passes without any scan being recorded, the ESP32 enters a sleep-wake cycle of 3s, where 3s passes being light sleep, and 1.5s passes being active. If an RFID is scanned during this 1.5s, the 30 minutes interval resets.
