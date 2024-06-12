@@ -1,5 +1,5 @@
 # NexxGate
-Next-generation gateway for secure access
+Next-generation gateway for secure keyless access, leveraging NFC and ESP32
 
 ## Team
 
