@@ -202,7 +202,7 @@ The following measurements were obtained during the testing of the NexxGate proj
     - Results: 0/50 = 0% (No false positives were detected)
     
 4. Energy Savings Mode:
-    Due to unavaiability of the INA219 sensor, the energy consumption was not measured, but the energy savings mode was successfully implemented and tested. The estimates for the energy savings were calculated based on the ESP32's power consumption in light sleep mode and the RC522 RFID Module power consumption under normal operation and idle operation:
+    Due to unavailability of the INA219 sensor, the energy consumption was not measured, but the energy savings mode was successfully implemented and tested. The estimates for the energy savings were calculated based on the ESP32's power consumption in light sleep mode and the RC522 RFID Module power consumption under normal operation and idle operation:
     - ESP32:
         - ESP32 Active Mode Rx and listening: 80mA
         - ESP32 Light Sleep Mode: 0.8mA
@@ -212,7 +212,6 @@ The following measurements were obtained during the testing of the NexxGate proj
 
     For the Energy Savings Mode, Since the ESP32 is in light sleep mode for 3s and active for 1.5s, the average power consumption of the ESP32, considering it is under 3,3V is:
     - ESP32 Average Power Consumption: (0.8mA * 3s + 80mA * 1.5s) * 3.3V / 4.5s = 89.76mW
-    For the RC522 RFID Module, the average power consumption is:
     - RC522 Average Power Consumption: (13mA * 3s + 19mA * 1.5s) * 3.3V / 4.5s = 49.5mW
 
     For the normal operation, without the energy savings mode, the average power consumption is:
@@ -224,7 +223,9 @@ The following measurements were obtained during the testing of the NexxGate proj
     - RC522: 13.2mW
 
     Total Average Power Consumption - Normal Operation: 326.44mW
+
     Total Average Power Consumption - Energy Savings Mode: 187.44mW
+    
     Total Average Power Consumption - Reduction: 139mW (42.6% reduction in power consumption during idle times)
 
 ## Demo <a name = "demo"></a>
