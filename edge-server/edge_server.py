@@ -8,13 +8,11 @@ from collections import Counter
 import json
 from pydantic import BaseModel
 import api_bridge
+
 import time
 from dotenv import load_dotenv
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-
-# Constants
-API_KEY = "aj1jD9mf11"
 
 EDGE_MQTT_BROKER = "localhost"
 EDGE_MQTT_PORT = 8883
@@ -229,7 +227,7 @@ def write_access_to_file(data: AuthenticateData):
     with open(ACCESS_LOG_FILE, "a") as file:
         # Format:  %Y-%m-%d %H:%M:%S,user1,NodeA,true
         date_str = data.date.strftime("%Y-%m-%d %H:%M:%S")
-        file.write(f"{date_str},{data.uid},{data.node_id},{data.result},{API_KEY}\n")
+        file.write(f"{date_str},{data.uid},{data.node_id},{data.result},{api_bridge.API_KEY}\n")
 
 
 def lockout_uid(uid):
@@ -253,26 +251,32 @@ def process_authentication(data: AuthenticateData):
     new_result = data.result
 
     # If negative result, check local access list
-    if not result and uid in access_list:
-        response_topic = ALLOW_AUTHENTICATE_TOPIC
+    if not result:
+        if uid in access_list:
+            response_topic = ALLOW_AUTHENTICATE_TOPIC
 
-        # Sign the data
-        authenticated_info = AuthenticatedData(uid=uid, result=True, node_id=node_id, signature=sign_data(uid.encode('utf-8')))
-        new_result = True
-        # Lockout mechanism
-        if new_result:
-            if uid in uid_access_times_and_node_id:
-                last_access_time_and_node_id = uid_access_times_and_node_id[uid]
-                if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
-                    print(f"Lockout triggered for {uid}")
-                    lockout_uid(uid)
-                    new_result = False
+            # Sign the data
+            authenticated_info = AuthenticatedData(uid=uid, result=True, node_id=node_id, signature=sign_data(uid.encode('utf-8')))
+            new_result = True
+            # Lockout mechanism
+            if new_result:
+                if uid in uid_access_times_and_node_id:
+                    last_access_time_and_node_id = uid_access_times_and_node_id[uid]
+                    if date - last_access_time_and_node_id.access_time < LOCKOUT_PERIOD and last_access_time_and_node_id.node_id != node_id:
+                        print(f"Lockout triggered for {uid}")
+                        lockout_uid(uid)
+                        new_result = False
+                    else:
+                        client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+                        print(f"Authenticated {uid} at {node_id} on {date}")
                 else:
                     client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
                     print(f"Authenticated {uid} at {node_id} on {date}")
-            else:
-                client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
-                print(f"Authenticated {uid} at {node_id} on {date}")
+        else:
+            response_topic = ALLOW_AUTHENTICATE_TOPIC
+            authenticated_info = AuthenticatedData(uid=uid, result=False, node_id=node_id, signature=sign_data(uid.encode('utf-8')))
+            client.publish(response_topic, json.dumps(authenticated_info.model_dump()))
+            print(f"Access Denied to {uid} at {node_id} on {date}")
 
 
     # Log every authentication attempt
@@ -297,7 +301,7 @@ def process_authentication(data: AuthenticateData):
         node_id=new_data.node_id,
         date=date_str,
         result=str(new_data.result),
-        api_key=API_KEY,
+        api_key=api_bridge.API_KEY,
     )
 
     if cloud_server_connected:

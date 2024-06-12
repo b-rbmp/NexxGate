@@ -42,6 +42,7 @@ static rc522_handle_t scanner;
 
 TimerHandle_t powerSavingIdleTimer;
 
+
 void off_leds()
 {
     gpio_set_level(LED_BLUE, 0);
@@ -679,42 +680,24 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
-static void heartbeat_cloud_task(void *pvParameters)
+static void heartbeat_cloud(esp_http_client_config_t config)
 {
-    char local_response_buffer[MAX_HTTP_OUTPUT_BUFFER + 1] = {0};
-    // Endpoint is HEARTBEAT_LINK + API_KEY.
-    char endpoint[100];
-    sprintf(endpoint, "%s%s", HEARTBEAT_LINK, API_KEY);
+    esp_http_client_handle_t client = esp_http_client_init(&config);
 
-    esp_http_client_config_t config = {
-        .url = endpoint,
-        .event_handler = _http_event_handler,
-        .user_data = local_response_buffer,
-        .disable_auto_redirect = true,
-    };
-
-    while (1)
+    // GET
+    esp_err_t err = esp_http_client_perform(client);
+    if (err == ESP_OK)
     {
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-
-        // GET
-        esp_err_t err = esp_http_client_perform(client);
-        if (err == ESP_OK)
-        {
-            ESP_LOGI(HTTP_TAG, "HTTP GET Status = %d, content_length = %" PRId64,
-                     esp_http_client_get_status_code(client),
-                     esp_http_client_get_content_length(client));
-        }
-        else
-        {
-            ESP_LOGE(HTTP_TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-        }
-        ESP_LOG_BUFFER_HEX(HTTP_TAG, local_response_buffer, strlen(local_response_buffer));
-
-        esp_http_client_cleanup(client);
-        // Delay for 30 minutes (1800 seconds)
-        vTaskDelay(1800 * 1000 / portTICK_PERIOD_MS);
+        ESP_LOGI(HTTP_TAG, "HTTP GET Status = %d, content_length = %" PRId64,
+                    esp_http_client_get_status_code(client),
+                    esp_http_client_get_content_length(client));
     }
+    else
+    {
+        ESP_LOGE(HTTP_TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
 }
 
 void mqtt_app_start(void)
@@ -952,8 +935,27 @@ void app_main()
         xTimerStart(powerSavingIdleTimer, 0);
     }
 
-    // Heartbeat task (Only when API is deployed to cloud)
-    // xTaskCreate(heartbeat_cloud_task, "heartbeat_cloud_task", 8192, NULL, 5, NULL);
+
+    // HTTP Heartbeat
+    char local_response_buffer[256] = {0};
+    // Endpoint is HEARTBEAT_LINK + API_KEY.
+    char http_heartbeat_endpoint[100];
+    sprintf(http_heartbeat_endpoint, "%s%s", HEARTBEAT_LINK, API_KEY);
+
+    esp_http_client_config_t esp_http_config = {
+        .url = http_heartbeat_endpoint,
+        .event_handler = _http_event_handler,
+        .user_data = local_response_buffer,
+        .disable_auto_redirect = true,
+    };
+
+    // Periodically send heartbeat to the cloud
+    while (1)
+    {
+        heartbeat_cloud(esp_http_config);
+        // Delay for 30 minutes (1800 seconds)
+        vTaskDelay(30 * 60 * 60 / portTICK_PERIOD_MS);
+    }
 
     print_memory_info("app_main");
 }

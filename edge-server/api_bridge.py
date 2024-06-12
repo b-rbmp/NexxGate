@@ -2,8 +2,8 @@
 from pydantic import BaseModel
 import requests
 
-api_cloud = "http://127.0.0.1:8000/nexxgate/api/v1/"
-api_key = "aj1jD9mf11"
+api_cloud = "http://34.228.42.62:8000/nexxgate/api/v1/"
+API_KEY = "aj1jD9mf11"
 
 class AccessListResponseItem(BaseModel):
     uid: str
@@ -27,7 +27,7 @@ def check_cloud_connection() -> bool:
 # Send a heartbeat to the Cloud Server
 def send_edge_heartbeat() -> bool:
     try:
-        response = requests.get(api_cloud + "edge_heartbeat/" + api_key, timeout=10)
+        response = requests.get(api_cloud + "edge_heartbeat/" + API_KEY, timeout=10)
         if response.status_code == 200:
             return True
         return False
